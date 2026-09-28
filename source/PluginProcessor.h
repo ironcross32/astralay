@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/Engine.h"
 #include "params/Parameters.h"
+#include "state/History.h"
 
 class AstralayProcessor final : public juce::AudioProcessor
 {
@@ -42,6 +43,19 @@ public:
     /** The tap shown in the editor (zero-based). Saved with the session but not a host parameter. */
     int getSelectedTap() const;
     void setSelectedTap (int tapIndex);
+
+    astralay::state::History& getHistory() noexcept { return history; }
+
+    /** The current preset's name, and whether its settings have changed since it was loaded or
+        saved. Both are saved with the session.
+    */
+    juce::String getPresetName() const;
+    bool isPresetModified() const;
+
+    /** Load or save presets as undoable steps. Each returns the text to announce. */
+    juce::String loadFactoryPreset (int index);
+    juce::String loadPresetFile (const juce::File& file);
+    juce::String savePresetFile (const juce::File& file);
 
 private:
     struct TapParameters
@@ -115,8 +129,11 @@ private:
 
     HostInfo readHost() const;
     void updateEngineSettings();
+    void setPresetInfo (const juce::String& name, bool modified);
+    juce::String applyPreset (const astralay::state::History::Snapshot& preset);
 
     juce::AudioProcessorValueTreeState state;
+    astralay::state::History history { *this };
     std::array<TapParameters, astralay::params::numTaps> tapParameters;
     GlobalParameters globalParameters;
 

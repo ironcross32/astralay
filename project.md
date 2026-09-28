@@ -116,6 +116,9 @@ Output:
 ## Presets and state
 
 - Factory presets are built into the plugin binary. User presets are saved to disk. The two are never written to the same place.
+- Factory presets are defined in code (`source/state/Presets.cpp`) as settings that differ from the defaults, written as the text a user would type ("250 ms", "1/8 dotted"). The starter set: Init, Slapback, Ping pong, Rhythmic scatter, Frozen grains, Robot choir.
+- Preset files hold every parameter's value in its own units, keyed by parameter ID. Parameters the file doesn't contain take their defaults; parameters the plugin doesn't know are ignored. A loaded preset takes its name from the file name.
+- Saving, loading and errors are announced ("Saved My Preset", "Loaded Slapback", "Could not load ... It isn't an Astralay preset.").
 - User presets are stored in `%userprofile%\Documents\Astralay\Presets` on Windows and `~/Documents/Astralay/Presets` on macOS.
 - Preset files are XML with a version attribute and the extension `.astralay`. When loading a preset from an older version, any missing parameter takes its default value.
 - Save opens a native OS save dialog in the user preset folder, suggesting the current preset name.
@@ -126,7 +129,10 @@ Output:
 ### Undo
 
 - Undo covers parameter changes, tap enable/disable, and preset loads. Changing the selected tap is not undoable.
-- One slider gesture is one undo step. A run of arrow-key presses joins into one step after a short pause.
+- One slider gesture is one undo step. A run of edits to the same parameter less than 600 ms apart (such as repeated arrow presses) joins into one step.
+- Only the user's edits are recorded, recognised by their change gestures; host automation never enters the undo history or marks the preset modified.
+- Undoing a preset load restores the previous values, preset name and modified state.
+- Undo and redo announce what changed, for example "Undo Tap 3 Feedback, 40%". The history lives in the processor, so it survives closing the editor, and is cleared when the host restores a session.
 
 ## Automation
 
@@ -173,7 +179,7 @@ Keyboard shortcuts, Windows / macOS:
 - Next group: ALT+. / CMD+. (fall back to OPTION only if hosts turn out to swallow CMD)
 - Previous group: ALT+, / CMD+,
 - Undo: CTRL+Z / CMD+Z
-- Redo: CTRL+SHIFT+Z / CMD+SHIFT+Z
+- Redo: CTRL+SHIFT+Z or CTRL+Y / CMD+SHIFT+Z
 - Save: CTRL+S / CMD+S
 - Load: CTRL+O / CMD+O
 

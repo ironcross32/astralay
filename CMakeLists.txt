@@ -74,6 +74,8 @@ target_sources(Astralay
         ${ASTRALAY_CORE_SOURCES}
         source/PluginProcessor.cpp
         source/PluginEditor.cpp
+        source/state/History.cpp
+        source/state/Presets.cpp
         source/ui/Announcer.cpp
         source/ui/HelpText.cpp
         source/ui/ParameterControls.cpp
@@ -119,9 +121,12 @@ if(ASTRALAY_BUILD_TESTS)
             tests/GlitchTests.cpp
             tests/FormantTests.cpp
             tests/SmearTests.cpp
+            tests/StateTests.cpp
             tests/Benchmark.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp
+            source/state/History.cpp
+            source/state/Presets.cpp
             source/ui/Announcer.cpp
             source/ui/HelpText.cpp
             source/ui/ParameterControls.cpp

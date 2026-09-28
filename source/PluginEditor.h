@@ -16,7 +16,8 @@ class AstralayProcessor;
 */
 class AstralayEditor final : public juce::AudioProcessorEditor,
                              public astralay::ui::AnnouncementTarget,
-                             private juce::FocusChangeListener
+                             private juce::FocusChangeListener,
+                             private juce::ValueTree::Listener
 {
 public:
     explicit AstralayEditor (AstralayProcessor&);
@@ -71,6 +72,15 @@ private:
     void selectTap (int tapIndex);
     void setSynced (bool shouldBeSynced);
     void refreshTapName (int tapIndex, bool on);
+    void refreshPresetName();
+
+    void undo();
+    void redo();
+    void showSaveDialog();
+    void showLoadMenu();
+    void showLoadDialog();
+
+    void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
     void jumpToGroup (int direction);
 
     static void layoutColumn (juce::Rectangle<int> area, const std::vector<LayoutItem>& items,
@@ -109,6 +119,9 @@ private:
     std::unique_ptr<FocusOutline> focusOutline;
     juce::TooltipWindow tooltipWindow { this, 700 };
     astralay::ui::Announcer announcer { *this };
+
+    std::unique_ptr<juce::FileChooser> fileChooser;
+    static constexpr int fromFileItemId = 10000;
 
     std::unique_ptr<juce::ParameterAttachment> syncWatcher;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> enabledWatchers;

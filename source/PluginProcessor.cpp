@@ -1,11 +1,14 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "params/NoteValues.h"
+#include "state/Presets.h"
 
 namespace
 {
     constexpr int stateVersion = 1;
     const juce::Identifier selectedTapProperty { "selectedTap" };
+    const juce::Identifier presetNameProperty { "presetName" };
+    const juce::Identifier presetModifiedProperty { "presetModified" };
 }
 
 AstralayProcessor::AstralayProcessor()
@@ -91,6 +94,77 @@ AstralayProcessor::AstralayProcessor()
 
     for (const auto& label : stutterSyncChoices())
         stutterNoteIndices.push_back (astralay::NoteValues::indexOf (label));
+
+    setPresetInfo ("Init", false);
+
+    history.onUserEdit = [this]
+    {
+        if (! isPresetModified())
+            setPresetInfo (getPresetName(), true);
+    };
+
+    history.onSnapshotApplied = [this] (const astralay::state::History::Snapshot& snapshot)
+    {
+        setPresetInfo (snapshot.presetName, snapshot.modified);
+    };
+}
+
+juce::String AstralayProcessor::getPresetName() const
+{
+    return state.state.getProperty (presetNameProperty, "Init").toString();
+}
+
+bool AstralayProcessor::isPresetModified() const
+{
+    return (bool) state.state.getProperty (presetModifiedProperty, false);
+}
+
+void AstralayProcessor::setPresetInfo (const juce::String& name, bool modified)
+{
+    state.state.setProperty (presetNameProperty, name, nullptr);
+    state.state.setProperty (presetModifiedProperty, modified, nullptr);
+}
+
+juce::String AstralayProcessor::applyPreset (const astralay::state::History::Snapshot& preset)
+{
+    const auto before = history.capture (getPresetName(), isPresetModified());
+    history.applyAndRecord (before, preset, "load preset " + preset.presetName);
+    return "Loaded " + preset.presetName;
+}
+
+juce::String AstralayProcessor::loadFactoryPreset (int index)
+{
+    const auto& presets = astralay::state::Presets::factory();
+
+    if (! juce::isPositiveAndBelow (index, (int) presets.size()))
+        return "No such preset";
+
+    return applyPreset (astralay::state::Presets::snapshotFor (presets[(size_t) index], *this));
+}
+
+juce::String AstralayProcessor::loadPresetFile (const juce::File& file)
+{
+    const auto xml = juce::XmlDocument::parse (file);
+    astralay::state::History::Snapshot preset;
+
+    if (xml == nullptr || ! astralay::state::Presets::fromXml (*xml, *this, preset))
+        return "Could not load " + file.getFileName() + ". It isn't an Astralay preset.";
+
+    // The file name is the preset's name, even if it was renamed after saving.
+    preset.presetName = file.getFileNameWithoutExtension();
+    return applyPreset (preset);
+}
+
+juce::String AstralayProcessor::savePresetFile (const juce::File& file)
+{
+    const auto name = file.getFileNameWithoutExtension();
+    const auto xml = astralay::state::Presets::toXml (*this, name);
+
+    if (! file.getParentDirectory().createDirectory() || ! xml->writeTo (file))
+        return "Could not save " + file.getFileName();
+
+    setPresetInfo (name, false);
+    return "Saved " + name;
 }
 
 void AstralayProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -294,6 +368,9 @@ void AstralayProcessor::setStateInformation (const void* data, int sizeInBytes)
             ranged->setValueNotifyingHost (ranged->getDefaultValue());
 
     state.replaceState (juce::ValueTree::fromXml (*xml));
+
+    // The undo history belongs to the settings that were just replaced.
+    history.clear();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

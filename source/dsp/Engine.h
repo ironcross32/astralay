@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include "Smear.h"
 #include "Tap.h"
 
 namespace astralay::dsp
@@ -13,6 +14,8 @@ struct GlobalSettings
     bool freeze = false;
     float mix = 0.5f;           // 0 (dry) to 1 (wet).
     float outputGain = 1.0f;    // Linear.
+    float smearAmount = 0.0f;   // 0 to 1.
+    float smearSeconds = 0.2f;
 
     GlitchGlobalSettings glitch;
     bool reproducible = false;
@@ -30,13 +33,14 @@ struct TransportInfo
     double chunkQuarters = 0.25;    // Chunk length in quarter notes when synced.
 };
 
-/** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, dry/wet mix and output
-    gain.
+/** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, smear on the combined
+    repeats, dry/wet mix and output gain.
 */
 class Engine
 {
 public:
     static constexpr int numTaps = 16;
+    static constexpr double maxSmearSeconds = 0.5;
 
     void prepare (double sampleRate, int maxBlockSize, double maxDelaySeconds);
     void reset();
@@ -60,6 +64,7 @@ private:
     void restartRandomness (juce::int64 baseSeed);
 
     std::array<Tap, numTaps> taps;
+    Smear smear;
     GlobalSettings global;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> freeze;

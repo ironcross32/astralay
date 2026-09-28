@@ -135,7 +135,10 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
     for (int t = 0; t < params::numTaps; ++t)
     {
         auto* enabled = state.getParameter (params::tapId (t, params::tap::enabled));
-        enabledWatchers.push_back (std::make_unique<juce::ParameterAttachment> (*enabled, [this, t] (float) { refreshTapName (t); }));
+        enabledWatchers.push_back (std::make_unique<juce::ParameterAttachment> (*enabled, [this, t] (float value)
+        {
+            refreshTapName (t, value >= 0.5f);
+        }));
     }
 
     selectTap (processor.getSelectedTap());
@@ -335,9 +338,10 @@ void AstralayEditor::setSynced (bool shouldBeSynced)
             bindRow (*row);
 }
 
-void AstralayEditor::refreshTapName (int tapIndex)
+void AstralayEditor::refreshTapName (int tapIndex, bool on)
 {
-    const auto on = state.getRawParameterValue (params::tapId (tapIndex, params::tap::enabled))->load() >= 0.5f;
+    // on comes from the change notification: the parameter store's copy of the value may not have
+    // been updated yet, since JUCE notifies the most recently added listeners first.
     tapSelector.changeItemText (tapIndex + 1, "Tap " + juce::String (tapIndex + 1) + (on ? ", on" : ", off"));
 
     // changeItemText doesn't refresh the displayed text of the selected item.

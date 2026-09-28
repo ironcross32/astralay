@@ -18,6 +18,7 @@ void Engine::prepare (double newSampleRate, int, double maxDelaySeconds)
     for (auto& tap : taps)
         tap.prepare (sampleRate, maxDelaySamples);
 
+    smear.prepare (sampleRate, maxSmearSeconds);
     freeze.reset (sampleRate, freezeCrossfadeSeconds);
 
     for (auto* s : { &dryGain, &wetGain, &outputGain })
@@ -60,6 +61,7 @@ void Engine::reset()
 
     freeze.setCurrentAndTargetValue (global.freeze ? 1.0f : 0.0f);
     setGlobalSettings (global);
+    smear.reset();
 
     for (auto* s : { &dryGain, &wetGain, &outputGain })
         s->setCurrentAndTargetValue (s->getTargetValue());
@@ -76,6 +78,7 @@ void Engine::setGlobalSettings (const GlobalSettings& settings)
     dryGain.setTargetValue (std::cos (angle));
     wetGain.setTargetValue (std::sin (angle));
     outputGain.setTargetValue (settings.outputGain);
+    smear.setParameters (settings.smearAmount, settings.smearSeconds);
 }
 
 void Engine::setTapSettings (int tapIndex, const TapSettings& settings)
@@ -111,6 +114,8 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
         for (auto& tap : taps)
             if (! tap.isIdle())
                 tap.process (mono, frozen, wetLeft, wetRight);
+
+        smear.process (wetLeft, wetRight);
 
         const auto dry = dryGain.getNextValue();
         const auto wet = wetGain.getNextValue();

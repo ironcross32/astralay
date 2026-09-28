@@ -89,6 +89,8 @@ private:
         std::atomic<float>* freeze = nullptr;
         std::atomic<float>* mix = nullptr;
         std::atomic<float>* outputGain = nullptr;
+        std::atomic<float>* smearAmount = nullptr;
+        std::atomic<float>* smearSize = nullptr;
 
         std::atomic<float>* threshold = nullptr;
         std::atomic<float>* placement = nullptr;

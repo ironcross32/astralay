@@ -62,6 +62,7 @@ set(ASTRALAY_CORE_SOURCES
     source/dsp/FormantShifter.cpp
     source/dsp/GlitchChain.cpp
     source/dsp/RealFft.cpp
+    source/dsp/Smear.cpp
     source/dsp/Tap.cpp
     source/params/NoteValues.cpp
     source/params/Parameters.cpp
@@ -117,6 +118,7 @@ if(ASTRALAY_BUILD_TESTS)
             tests/EditorTests.cpp
             tests/GlitchTests.cpp
             tests/FormantTests.cpp
+            tests/SmearTests.cpp
             tests/Benchmark.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp

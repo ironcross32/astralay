@@ -146,6 +146,17 @@ public:
                 // Tap 3 is off by default; tap 1 is on.
                 expectEquals (selector->getItemText (0), juce::String ("Tap 1, on"));
                 expectEquals (selector->getItemText (2), juce::String ("Tap 3, off"));
+                expectEquals (selector->getText(), juce::String ("Tap 3, off"));
+
+                // Turning the selected tap on and off updates both its item and the displayed text.
+                auto* enabled = processor.getState().getParameter (tapId (2, tap::enabled));
+                enabled->setValueNotifyingHost (1.0f);
+                expectEquals (selector->getItemText (2), juce::String ("Tap 3, on"));
+                expectEquals (selector->getText(), juce::String ("Tap 3, on"));
+
+                enabled->setValueNotifyingHost (0.0f);
+                expectEquals (selector->getItemText (2), juce::String ("Tap 3, off"));
+                expectEquals (selector->getText(), juce::String ("Tap 3, off"));
 
                 selector->setSelectedId (1, juce::sendNotificationSync);
             }

@@ -76,6 +76,8 @@ AstralayProcessor::AstralayProcessor()
     globalParameters.freeze     = get (global::freeze);
     globalParameters.mix        = get (global::mix);
     globalParameters.outputGain = get (global::outputGain);
+    globalParameters.smearAmount = get (global::smearAmount);
+    globalParameters.smearSize  = get (global::smearSize);
 
     globalParameters.threshold    = get (global::threshold);
     globalParameters.placement    = get (global::placement);
@@ -168,6 +170,8 @@ void AstralayProcessor::updateEngineSettings()
     g.freeze = load (globalParameters.freeze) >= 0.5f;
     g.mix = load (globalParameters.mix) / 100.0f;
     g.outputGain = juce::Decibels::decibelsToGain (load (globalParameters.outputGain));
+    g.smearAmount = load (globalParameters.smearAmount) / 100.0f;
+    g.smearSeconds = load (globalParameters.smearSize) / 1000.0f;
     g.glitch.threshold = load (globalParameters.threshold) / 100.0f;
     g.glitch.outputAndFeedback = (int) load (globalParameters.placement) == (int) params::GlitchPlacement::outputAndFeedback;
     g.glitch.chunkSamples = juce::jmax (1, (int) std::llround (juce::jmin (chunkSamples, params::maxDelaySeconds * sampleRate)));

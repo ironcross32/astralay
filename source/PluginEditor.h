@@ -70,7 +70,7 @@ private:
     void bindRow (SliderRow& row);
     void selectTap (int tapIndex);
     void setSynced (bool shouldBeSynced);
-    void refreshTapName (int tapIndex);
+    void refreshTapName (int tapIndex, bool on);
     void jumpToGroup (int direction);
 
     static void layoutColumn (juce::Rectangle<int> area, const std::vector<LayoutItem>& items,

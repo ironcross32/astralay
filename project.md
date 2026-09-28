@@ -108,7 +108,7 @@ Glitch engine:
 - Seed: 0 to 9999.
 
 Output:
-- Smear amount: 0% to 100%, default 10%. Applies smearing and diffusion to the summed wet output of all taps.
+- Smear amount: 0% to 100%, default 10%. Applies smearing and diffusion to the summed wet output of all taps. Smear is a cascade of six allpass diffusers per channel (whole-sample delays that add up to the smear size, slightly different on the left and right for stereo spread), so it spreads sound out in time without changing its tone or level. The amount is an equal-power crossfade between the unsmeared and smeared signal; 0% is an exact bypass. Size changes glide over 100 ms.
 - Smear size: 10 ms to 500 ms, default 200 ms.
 - Mix: 0% to 100% wet, equal-power crossfade, default 50%.
 - Output gain: -24 dB to +12 dB, default -3 dB.

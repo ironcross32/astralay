@@ -35,8 +35,17 @@ clap_juce_extensions_plugin(TARGET Astralay
     CLAP_ID "me.ironlabs.astralay"
     CLAP_FEATURES audio-effect delay glitch stereo)
 
+# Sources shared by the plugin and the test runner: DSP and parameter code with no editor dependencies.
+set(ASTRALAY_CORE_SOURCES
+    source/dsp/Engine.cpp
+    source/dsp/Tap.cpp
+    source/params/NoteValues.cpp
+    source/params/Parameters.cpp
+    source/params/Units.cpp)
+
 target_sources(Astralay
     PRIVATE
+        ${ASTRALAY_CORE_SOURCES}
         source/PluginProcessor.cpp
         source/PluginEditor.cpp)
 
@@ -59,3 +68,39 @@ target_link_libraries(Astralay
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Unit tests for the DSP and parameter code, run with CTest or directly.
+option(ASTRALAY_BUILD_TESTS "Build the Astralay test runner" ON)
+
+if(ASTRALAY_BUILD_TESTS)
+    enable_testing()
+
+    juce_add_console_app(AstralayTests
+        PRODUCT_NAME "AstralayTests")
+
+    target_sources(AstralayTests
+        PRIVATE
+            ${ASTRALAY_CORE_SOURCES}
+            tests/TestMain.cpp
+            tests/DspTests.cpp
+            tests/ParameterTests.cpp)
+
+    target_include_directories(AstralayTests
+        PRIVATE
+            source)
+
+    target_compile_definitions(AstralayTests
+        PRIVATE
+            JUCE_WEB_BROWSER=0
+            JUCE_USE_CURL=0)
+
+    target_link_libraries(AstralayTests
+        PRIVATE
+            juce::juce_audio_processors
+            juce::juce_dsp
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+
+    add_test(NAME AstralayTests COMMAND AstralayTests)
+endif()

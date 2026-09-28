@@ -26,7 +26,8 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 
 - Input is summed to mono going into each tap. Supported layouts are mono in / stereo out and stereo in / stereo out.
 - Each tap has its own delay line and its own feedback loop.
-- Each tap's feedback path contains, in order: the active glitches, a low cut filter, a high cut filter, and an always-on gentle soft-clipper with no user controls.
+- Each tap's feedback path contains, in order: the active glitches (when glitch placement is "Feedback path"), a low cut filter, a high cut filter, and an always-on gentle soft-clipper with no user controls.
+- The maximum delay is 10 seconds. Synced times longer than that at slow tempos are clamped to 10 seconds.
 - Each tap's output is scaled by its volume and panned into stereo.
 - The summed wet output of all taps passes through smear, then is mixed with the dry signal, then output gain is applied.
 
@@ -34,12 +35,13 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 
 - There are 16 taps. Taps are fixed slots that can either be on or off. This is deliberate, to prevent having to renumber a deleted tap and to keep host automation stable.
 - A new instance has only tap 1 enabled. All taps off is allowed (dry signal only).
+- Disabling a tap fades it out and then clears its delay line, so re-enabling it starts silent rather than replaying old audio.
 - When selecting a tap, the tap-specific controls update dynamically to show only the values for the selected tap. The goal is to avoid cluttering the interface.
 
 Per-tap controls, with ranges and defaults:
 - Enabled: on/off. Default on for tap 1, off for all others.
-- Time: 1 ms to 5 s, default 500 ms. When host sync is on: 1/64 to 4 bars (straight, dotted and triplet), default 1/4. The millisecond value and the synced value are stored as separate parameters, so toggling sync never destroys either.
-- Volume: dB, down to -inf. Default 0 dB.
+- Time: 1 ms to 5 s, default 500 ms. When host sync is on: 1/64 triplet to 4 bars (straight, dotted and triplet), default 1/4. Bar lengths follow the host's time signature. The millisecond value and the synced value are stored as separate parameters, so toggling sync never destroys either.
+- Volume: -inf to +6 dB (the bottom of the range, -60 dB, means silence). Default 0 dB.
 - Pan: 100L to 100R, constant-power pan law. Default centre.
 - Feedback: 0% to 100%, where 100% is unity gain. No values above 100%. Default 40%.
 - Low cut (in the feedback path): 20 Hz to 2 kHz, 12 dB per octave. Default 20 Hz (effectively off).
@@ -51,7 +53,9 @@ When a tap's time changes while audio is playing (automation, tempo change, user
 
 ### How glitches fire
 
-- Glitches apply within each tap's feedback path, so they compound over repeats.
+- Glitches compound over repeats. Where they apply is set by the global glitch placement control:
+    - Feedback path (default): glitches apply only to the signal fed back into the delay line, so the first repeat is clean and glitches are not heard at 0% feedback.
+    - Output and feedback: glitches apply to the delayed signal before it splits to the tap's output and its feedback, so they are heard from the first repeat even at 0% feedback.
 - Audio is divided into chunks of the global buffer size. When host sync is on, the chunk grid is aligned to the host's bar and beat position; otherwise it is free-running from when the plugin started processing.
 - At each chunk boundary, each glitch type on each enabled tap rolls to fire. Its chance is the tap's probability for that glitch multiplied by the global glitch threshold. A global threshold of 0% disables all glitching.
 - A glitch that fires runs for a random number of chunks between the global minimum and maximum glitch length.
@@ -68,7 +72,7 @@ Where a glitch type has a range, the plugin randomly selects a value from it eac
 Every glitch type has a probability control, 0% to 100%, default 0%. Additional controls per type, as full range (default minimum to default maximum):
 
 - Reverse: reverses the buffer for the length of the glitch. No additional controls.
-- Stutter: repeats a slice for the length of the glitch. Slice length 5 ms to 250 ms, or a note value when synced (default 20 ms to 120 ms).
+- Stutter: repeats a slice for the length of the glitch. Slice length 5 ms to 250 ms (default 20 ms to 120 ms), or when synced 1/64 triplet to 1/4 (default 1/32 to 1/8).
 - Granularize: grain size 5 ms to 200 ms (default 20 ms to 80 ms); density 1 to 100 grains per second (default 10 to 40).
 - Pitch: -24 to +24 semitones (default -12 to +12).
 - LPC formant shifting: -12 to +12 semitones (default -5 to +5).
@@ -92,6 +96,7 @@ Timing:
 
 Glitch engine:
 - Glitch threshold: 0% to 100%, default 20%.
+- Glitch placement: "Feedback path" or "Output and feedback", default "Feedback path".
 - Buffer size: 10 ms to 2 s, default 125 ms. When synced: 1/64 to 4 bars, default 1/16.
 - Maximum simultaneous glitches: 1 to 4 per tap, default 2.
 - Minimum glitch length: 1 to 16 chunks, default 1.
@@ -103,7 +108,7 @@ Output:
 - Smear amount: 0% to 100%, default 10%. Applies smearing and diffusion to the summed wet output of all taps.
 - Smear size: 10 ms to 500 ms, default 200 ms.
 - Mix: 0% to 100% wet, equal-power crossfade, default 50%.
-- Output gain: dB, default -3 dB.
+- Output gain: -24 dB to +12 dB, default -3 dB.
 
 ## Presets and state
 
@@ -150,7 +155,7 @@ There are three top-level groups, in this order:
     - Nine nested glitch sub-groups, named after each glitch type, in processing order: Reverse, Stutter, Granularize, Pitch, LPC formant, Cepstral formant, Ring modulation, Frequency modulation, Bit crusher. Inside each, the probability comes first, followed by the range controls, each minimum before its maximum.
 3. Global, with three nested sub-groups:
     - Timing: host sync, glide time, freeze
-    - Glitch engine: glitch threshold, buffer size, maximum simultaneous glitches, minimum glitch length, maximum glitch length, reproducible randomness, seed
+    - Glitch engine: glitch threshold, glitch placement, buffer size, maximum simultaneous glitches, minimum glitch length, maximum glitch length, reproducible randomness, seed
     - Output: smear amount, smear size, mix, output gain
 
 Every control in the tap group includes the tap number in its accessible name (for example "Tap 3 Feedback"), so each control identifies itself without relying on announcements.

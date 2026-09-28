@@ -4,3 +4,6 @@
 [submodule "libs/clap-juce-extensions"]
 	path = libs/clap-juce-extensions
 	url = https://github.com/free-audio/clap-juce-extensions.git
+[submodule "libs/pffft"]
+	path = libs/pffft
+	url = https://github.com/marton78/pffft.git

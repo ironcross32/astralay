@@ -13,6 +13,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(libs/JUCE)
 add_subdirectory(libs/clap-juce-extensions EXCLUDE_FROM_ALL)
 
+# PFFFT: fast FFTs for the formant shifters. Built from source as its own library so its C code
+# isn't held to JUCE's warning flags.
+add_library(astralay_pffft STATIC
+    libs/pffft/src/pffft.c
+    libs/pffft/src/pffft_common.c)
+
+target_include_directories(astralay_pffft
+    PUBLIC libs/pffft/include
+    PRIVATE libs/pffft/include/pffft libs/pffft/src)
+
+set_target_properties(astralay_pffft PROPERTIES
+    C_STANDARD 99
+    POSITION_INDEPENDENT_CODE ON)
+
+# Static library: stops the headers declaring the functions as DLL imports on Windows.
+target_compile_definitions(astralay_pffft PUBLIC PFFFT_STATIC_DEFINE)
+
+if(MSVC)
+    target_compile_definitions(astralay_pffft PRIVATE _USE_MATH_DEFINES)
+endif()
+
 juce_add_plugin(Astralay
     COMPANY_NAME "Iron Labs"
     BUNDLE_ID "me.ironlabs.astralay"
@@ -38,7 +59,9 @@ clap_juce_extensions_plugin(TARGET Astralay
 # Sources shared by the plugin and the test runner: DSP and parameter code with no editor dependencies.
 set(ASTRALAY_CORE_SOURCES
     source/dsp/Engine.cpp
+    source/dsp/FormantShifter.cpp
     source/dsp/GlitchChain.cpp
+    source/dsp/RealFft.cpp
     source/dsp/Tap.cpp
     source/params/NoteValues.cpp
     source/params/Parameters.cpp
@@ -67,6 +90,7 @@ target_compile_definitions(Astralay
 
 target_link_libraries(Astralay
     PRIVATE
+        astralay_pffft
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
@@ -92,6 +116,7 @@ if(ASTRALAY_BUILD_TESTS)
             tests/StepTests.cpp
             tests/EditorTests.cpp
             tests/GlitchTests.cpp
+            tests/FormantTests.cpp
             tests/Benchmark.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp
@@ -112,6 +137,7 @@ if(ASTRALAY_BUILD_TESTS)
 
     target_link_libraries(AstralayTests
         PRIVATE
+            astralay_pffft
             juce::juce_audio_processors
             juce::juce_dsp
         PUBLIC

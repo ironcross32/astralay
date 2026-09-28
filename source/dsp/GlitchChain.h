@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FormantShifter.h"
 #include "Glitch.h"
 
 namespace astralay::dsp
@@ -11,8 +12,6 @@ namespace astralay::dsp
     number of chunks with values picked from its ranges, fading in and out to avoid clicks. Glitches
     are processed in series in GlitchType order. Those that work on past audio keep a history of
     their own input, so each one hears the output of the glitches before it.
-
-    The LPC and cepstral formant glitches are not implemented yet and never fire.
 */
 class GlitchChain
 {
@@ -90,6 +89,9 @@ private:
 
     // Pitch
     float pitchRatio = 1.0f, pitchPhase = 0.0f, pitchWindow = 1.0f;
+
+    // Formants
+    FormantShifter lpcShifter, cepstralShifter;
 
     // Ring modulation
     float ringFrequency = 100.0f, ringPhase = 0.0f;

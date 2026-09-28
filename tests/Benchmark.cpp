@@ -1,6 +1,7 @@
 #include <iostream>
 #include <juce_core/juce_core.h>
 #include "dsp/Engine.h"
+#include "dsp/FormantShifter.h"
 #include "PluginProcessor.h"
 
 namespace
@@ -84,8 +85,64 @@ namespace
     }
 }
 
+namespace
+{
+    /** Microseconds per 1024-point real forward transform. */
+    template <typename Transform>
+    double microsecondsPer (Transform&& transform)
+    {
+        std::vector<float> data (2048, 0.0f);
+        constexpr int runs = 20000;
+
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+
+        for (int i = 0; i < runs; ++i)
+        {
+            data[0] = (float) i;
+            transform (data.data());
+        }
+
+        return (juce::Time::getMillisecondCounterHiRes() - start) * 1000.0 / runs;
+    }
+
+    /** Milliseconds of CPU per second of audio with the shifter running continuously. */
+    double formantMilliseconds (FormantShifter::Method method)
+    {
+        FormantShifter shifter;
+        shifter.prepare (48000.0, method);
+        juce::Random random (2);
+
+        for (int i = 0; i < 4096; ++i)
+            shifter.push (random.nextFloat() - 0.5f);
+
+        shifter.start (5.0f);
+        float sink = 0.0f;
+
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+
+        for (int i = 0; i < 48000; ++i)
+        {
+            shifter.push (random.nextFloat() - 0.5f);
+            sink += shifter.next();
+        }
+
+        const auto elapsed = juce::Time::getMillisecondCounterHiRes() - start;
+        return sink == 12345.0f ? 0.0 : elapsed;
+    }
+}
+
 void runBenchmark()
 {
+    juce::dsp::FFT juceFft (10);
+    RealFft pffft (10);
+
+    std::cout << "JUCE FFT (1024 point, real): "
+              << juce::String (microsecondsPer ([&] (float* d) { juceFft.performRealOnlyForwardTransform (d, true); }), 2) << " us" << std::endl;
+    std::cout << "PFFFT (1024 point, real): "
+              << juce::String (microsecondsPer ([&] (float* d) { pffft.forward (d, d); }), 2) << " us" << std::endl;
+    std::cout << "LPC formant shifter: " << juce::String (formantMilliseconds (FormantShifter::Method::lpc), 2) << " ms per second of audio" << std::endl;
+    std::cout << "Cepstral formant shifter: " << juce::String (formantMilliseconds (FormantShifter::Method::cepstral), 2) << " ms per second of audio" << std::endl;
+
     std::cout << "Tap switch: " << juce::String (tapSwitchMilliseconds(), 2) << " ms" << std::endl;
 
     for (auto [taps, glitching] : { std::pair { 1, false }, std::pair { 1, true },

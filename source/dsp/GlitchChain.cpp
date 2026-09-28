@@ -49,6 +49,9 @@ void GlitchChain::prepare (double newSampleRate)
     slice.assign ((size_t) samples (sliceCapSeconds), 0.0f);
     pitchWindow = (float) (pitchWindowSeconds * sampleRate);
 
+    lpcShifter.prepare (sampleRate, FormantShifter::Method::lpc);
+    cepstralShifter.prepare (sampleRate, FormantShifter::Method::cepstral);
+
     reset();
 }
 
@@ -56,6 +59,9 @@ void GlitchChain::reset()
 {
     for (auto* history : { &reverseInput, &stutterInput, &grainInput, &pitchInput, &fmInput })
         history->clear();
+
+    lpcShifter.reset();
+    cepstralShifter.reset();
 
     for (auto& slot : slots)
         slot = {};
@@ -93,9 +99,6 @@ void GlitchChain::onChunkBoundary()
 
         // Always draw, so the random sequence doesn't depend on which glitches are running.
         const auto roll = random.nextFloat();
-
-        if (type == GlitchType::lpcFormant || type == GlitchType::cepstralFormant)
-            continue; // Not implemented yet.
 
         if (slots[(size_t) i].active || getNumActive() >= global.maxSimultaneous)
             continue;
@@ -182,8 +185,11 @@ void GlitchChain::start (GlitchType type)
             break;
 
         case GlitchType::lpcFormant:
+            lpcShifter.start (settings.lpcShift.pick (random));
+            break;
+
         case GlitchType::cepstralFormant:
-            slot.active = false;
+            cepstralShifter.start (settings.cepstralShift.pick (random));
             break;
     }
 }
@@ -223,6 +229,14 @@ float GlitchChain::process (float input) noexcept
     pitchInput.push (y);
     if (isActive (GlitchType::pitch))
         y = applyStage (GlitchType::pitch, y, pitchShift());
+
+    lpcShifter.push (y);
+    if (isActive (GlitchType::lpcFormant))
+        y = applyStage (GlitchType::lpcFormant, y, lpcShifter.next());
+
+    cepstralShifter.push (y);
+    if (isActive (GlitchType::cepstralFormant))
+        y = applyStage (GlitchType::cepstralFormant, y, cepstralShifter.next());
 
     if (isActive (GlitchType::ringModulation))
         y = applyStage (GlitchType::ringModulation, y, ringModulate (y));

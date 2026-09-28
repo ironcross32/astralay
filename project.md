@@ -17,6 +17,7 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 - Build system: CMake (not Projucer). macOS builds are universal binaries (Apple Silicon and Intel), with a minimum of macOS 10.13.
 - JUCE is included as a git submodule of this repository at `libs/JUCE`, pinned to the release tag 9.0.3. It is never installed or referenced from outside the repository.
 - CLAP: JUCE 9.0.3 has no native CLAP support, so CLAP builds use `clap-juce-extensions`, a second git submodule at `libs/clap-juce-extensions`. It has nested submodules of its own, so clone with `git clone --recursive` or run `git submodule update --init --recursive`. Revisit native CLAP if a later JUCE release adds it.
+- FFTs use PFFFT (git submodule at `libs/pffft`, built as a static library), since JUCE's fallback FFT on Windows is roughly 19 times slower. PFFFT's BSD-style licence requires its copyright notice in the documentation of binary releases.
 - License: Astralay's own source is MIT. Release builds link JUCE under the AGPLv3, so distributed binaries are AGPLv3; the README must explain this.
 - The Surge XT code base at D:\programming\surge is an excellent example of good JUCE accessibility. Learn from it, but do not copy code from it (Surge is GPL-3).
 - Every build must pass pluginval at a strict level.
@@ -78,6 +79,7 @@ Every glitch type has a probability control, 0% to 100%, default 0%. Additional 
 - Pitch: -24 to +24 semitones (default -12 to +12).
 - LPC formant shifting: -12 to +12 semitones (default -5 to +5).
 - Cepstral formant shifting: -12 to +12 semitones (default -5 to +5).
+- Both formant shifters analyse about 21 ms frames at 4x overlap, estimate each frame's spectral envelope, and replace it with a copy stretched by the shift, keeping the pitch. LPC estimates the envelope by linear prediction (broader, grittier); cepstral by smoothing the log spectrum (sharper, smoother). Their output lags by one frame, and they analyse recent history when they start, so there is no silent gap.
 - Ring modulation: frequency 1 Hz to 5 kHz (default 30 Hz to 800 Hz).
 - Frequency modulation: ratio 0.25 to 16 (default 0.5 to 3); index 0 to 10 (default 0.5 to 4). The audio is phase modulated by a sine at the ratio times the audio's estimated fundamental (from its zero crossings when the glitch starts), with the index as the phase deviation.
 - Bit crusher: bit depth 1 to 16 (default 4 to 10); sample-rate reduction 1x to 64x (default 1x to 8x).

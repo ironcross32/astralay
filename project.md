@@ -14,9 +14,9 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 
 ## Build, dependencies and licensing
 
-- Build system: CMake (not Projucer).
+- Build system: CMake (not Projucer). macOS builds are universal binaries (Apple Silicon and Intel), with a minimum of macOS 10.13.
 - JUCE is included as a git submodule of this repository at `libs/JUCE`, pinned to the release tag 9.0.3. It is never installed or referenced from outside the repository.
-- CLAP: use JUCE 9's native CLAP support. If it proves insufficient, fall back to `clap-juce-extensions` as a second git submodule at `libs/clap-juce-extensions`.
+- CLAP: JUCE 9.0.3 has no native CLAP support, so CLAP builds use `clap-juce-extensions`, a second git submodule at `libs/clap-juce-extensions`. It has nested submodules of its own, so clone with `git clone --recursive` or run `git submodule update --init --recursive`. Revisit native CLAP if a later JUCE release adds it.
 - License: Astralay's own source is MIT. Release builds link JUCE under the AGPLv3, so distributed binaries are AGPLv3; the README must explain this.
 - The Surge XT code base at D:\programming\surge is an excellent example of good JUCE accessibility. Learn from it, but do not copy code from it (Surge is GPL-3).
 - Every build must pass pluginval at a strict level.

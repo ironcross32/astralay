@@ -59,7 +59,8 @@ When a tap's time changes while audio is playing (automation, tempo change, user
 - Audio is divided into chunks of the global buffer size. When host sync is on, the chunk grid is aligned to the host's bar and beat position; otherwise it is free-running from when the plugin started processing.
 - At each chunk boundary, each glitch type on each enabled tap rolls to fire. Its chance is the tap's probability for that glitch multiplied by the global glitch threshold. A global threshold of 0% disables all glitching.
 - A glitch that fires runs for a random number of chunks between the global minimum and maximum glitch length.
-- Multiple glitches can trigger and run simultaneously, up to the global maximum simultaneous glitches per tap.
+- Multiple glitches can trigger and run simultaneously, up to the global maximum simultaneous glitches per tap. A glitch type that is already running on a tap doesn't retrigger.
+- Glitches fade in and out over 5 ms to avoid clicks.
 - When several glitches run at once on a tap, they are processed in series in this fixed order: reverse, stutter, granularize, pitch, LPC formant, cepstral formant, ring modulation, frequency modulation, bit crusher.
 - Effects that need a window of audio (granularize, LPC formant, cepstral formant) read the delay line's history when a tap is shorter than their window. No latency is reported to the host.
 
@@ -71,14 +72,14 @@ Where a glitch type has a range, the plugin randomly selects a value from it eac
 
 Every glitch type has a probability control, 0% to 100%, default 0%. Additional controls per type, as full range (default minimum to default maximum):
 
-- Reverse: reverses the buffer for the length of the glitch. No additional controls.
-- Stutter: repeats a slice for the length of the glitch. Slice length 5 ms to 250 ms (default 20 ms to 120 ms), or when synced 1/64 triplet to 1/4 (default 1/32 to 1/8).
-- Granularize: grain size 5 ms to 200 ms (default 20 ms to 80 ms); density 1 to 100 grains per second (default 10 to 40).
+- Reverse: plays in reverse for the length of the glitch. Each chunk-long segment (up to 2 seconds) plays the segment before it backwards. No additional controls.
+- Stutter: captures a slice (up to 2 seconds) when the glitch starts and repeats it for the length of the glitch. Slice length 5 ms to 250 ms (default 20 ms to 120 ms), or when synced 1/64 triplet to 1/4 (default 1/32 to 1/8).
+- Granularize: grain size 5 ms to 200 ms (default 20 ms to 80 ms); density 1 to 100 grains per second (default 10 to 40). Grains are Hann-windowed copies of audio from up to half a second back, spaced with random jitter.
 - Pitch: -24 to +24 semitones (default -12 to +12).
 - LPC formant shifting: -12 to +12 semitones (default -5 to +5).
 - Cepstral formant shifting: -12 to +12 semitones (default -5 to +5).
 - Ring modulation: frequency 1 Hz to 5 kHz (default 30 Hz to 800 Hz).
-- Frequency modulation: ratio 0.25 to 16 (default 0.5 to 3); index 0 to 10 (default 0.5 to 4).
+- Frequency modulation: ratio 0.25 to 16 (default 0.5 to 3); index 0 to 10 (default 0.5 to 4). The audio is phase modulated by a sine at the ratio times the audio's estimated fundamental (from its zero crossings when the glitch starts), with the index as the phase deviation.
 - Bit crusher: bit depth 1 to 16 (default 4 to 10); sample-rate reduction 1x to 64x (default 1x to 8x).
 
 ### Randomness

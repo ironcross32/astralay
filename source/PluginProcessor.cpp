@@ -34,6 +34,41 @@ AstralayProcessor::AstralayProcessor()
         p.feedback = get (tapId (t, tap::feedback));
         p.lowCut   = get (tapId (t, tap::lowCut));
         p.highCut  = get (tapId (t, tap::highCut));
+
+        // In GlitchType order.
+        const std::array<const char*, astralay::dsp::numGlitchTypes> probabilities
+        {
+            tap::reverseProb, tap::stutterProb, tap::grainProb, tap::pitchProb, tap::lpcProb,
+            tap::cepsProb, tap::ringProb, tap::fmProb, tap::crushProb
+        };
+
+        for (size_t i = 0; i < probabilities.size(); ++i)
+            p.probability[i] = get (tapId (t, probabilities[i]));
+
+        p.stutterMin      = get (tapId (t, tap::stutterMin));
+        p.stutterMax      = get (tapId (t, tap::stutterMax));
+        p.stutterSyncMin  = get (tapId (t, tap::stutterSyncMin));
+        p.stutterSyncMax  = get (tapId (t, tap::stutterSyncMax));
+        p.grainSizeMin    = get (tapId (t, tap::grainSizeMin));
+        p.grainSizeMax    = get (tapId (t, tap::grainSizeMax));
+        p.grainDensityMin = get (tapId (t, tap::grainDensMin));
+        p.grainDensityMax = get (tapId (t, tap::grainDensMax));
+        p.pitchMin        = get (tapId (t, tap::pitchMin));
+        p.pitchMax        = get (tapId (t, tap::pitchMax));
+        p.lpcMin          = get (tapId (t, tap::lpcMin));
+        p.lpcMax          = get (tapId (t, tap::lpcMax));
+        p.cepstralMin     = get (tapId (t, tap::cepsMin));
+        p.cepstralMax     = get (tapId (t, tap::cepsMax));
+        p.ringMin         = get (tapId (t, tap::ringMin));
+        p.ringMax         = get (tapId (t, tap::ringMax));
+        p.fmRatioMin      = get (tapId (t, tap::fmRatioMin));
+        p.fmRatioMax      = get (tapId (t, tap::fmRatioMax));
+        p.fmIndexMin      = get (tapId (t, tap::fmIndexMin));
+        p.fmIndexMax      = get (tapId (t, tap::fmIndexMax));
+        p.bitsMin         = get (tapId (t, tap::crushBitsMin));
+        p.bitsMax         = get (tapId (t, tap::crushBitsMax));
+        p.rateMin         = get (tapId (t, tap::crushRateMin));
+        p.rateMax         = get (tapId (t, tap::crushRateMax));
     }
 
     globalParameters.sync       = get (global::sync);
@@ -41,6 +76,19 @@ AstralayProcessor::AstralayProcessor()
     globalParameters.freeze     = get (global::freeze);
     globalParameters.mix        = get (global::mix);
     globalParameters.outputGain = get (global::outputGain);
+
+    globalParameters.threshold    = get (global::threshold);
+    globalParameters.placement    = get (global::placement);
+    globalParameters.bufferSize   = get (global::bufferSize);
+    globalParameters.bufferSync   = get (global::bufferSync);
+    globalParameters.maxGlitches  = get (global::maxGlitches);
+    globalParameters.lengthMin    = get (global::lengthMin);
+    globalParameters.lengthMax    = get (global::lengthMax);
+    globalParameters.reproducible = get (global::reproducible);
+    globalParameters.seed         = get (global::seed);
+
+    for (const auto& label : stutterSyncChoices())
+        stutterNoteIndices.push_back (astralay::NoteValues::indexOf (label));
 }
 
 void AstralayProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -64,23 +112,31 @@ bool AstralayProcessor::isBusesLayoutSupported (const BusesLayout& layouts) cons
     return input == juce::AudioChannelSet::mono() || input == juce::AudioChannelSet::stereo();
 }
 
-AstralayProcessor::Tempo AstralayProcessor::readTempo() const
+AstralayProcessor::HostInfo AstralayProcessor::readHost() const
 {
-    Tempo tempo;
+    HostInfo info;
 
     if (auto* host = getPlayHead())
     {
         if (const auto position = host->getPosition())
         {
             if (const auto bpm = position->getBpm(); bpm.hasValue() && *bpm > 0.0)
-                tempo.bpm = *bpm;
+                info.bpm = *bpm;
 
             if (const auto signature = position->getTimeSignature(); signature.hasValue() && signature->denominator > 0)
-                tempo.barLengthInQuarters = signature->numerator * 4.0 / signature->denominator;
+                info.barLengthInQuarters = signature->numerator * 4.0 / signature->denominator;
+
+            info.playing = position->getIsPlaying();
+
+            if (const auto ppq = position->getPpqPosition(); ppq.hasValue())
+            {
+                info.hasPosition = true;
+                info.ppq = *ppq;
+            }
         }
     }
 
-    return tempo;
+    return info;
 }
 
 void AstralayProcessor::updateEngineSettings()
@@ -89,32 +145,53 @@ void AstralayProcessor::updateEngineSettings()
 
     const auto sampleRate = getSampleRate() > 0.0 ? getSampleRate() : 44100.0;
     const auto synced = globalParameters.sync->load() >= 0.5f;
-    const auto tempo = synced ? readTempo() : Tempo {};
+    const auto host = readHost();
+    const auto samplesPerQuarter = sampleRate * 60.0 / host.bpm;
     const auto& notes = NoteValues::all();
 
+    const auto noteQuarters = [&] (int noteIndex)
+    {
+        return notes.getReference (juce::jlimit (0, notes.size() - 1, noteIndex)).lengthInQuarters (host.barLengthInQuarters);
+    };
+
+    const auto msToSamples = [sampleRate] (float ms) { return (float) (ms * 0.001 * sampleRate); };
+    const auto load = [] (std::atomic<float>* p) { return p->load(); };
+    const auto range = [&load] (std::atomic<float>* lo, std::atomic<float>* hi) { return dsp::RandomRange { load (lo), load (hi) }; };
+
+    // Glitch chunks: note values on the beat grid when synced, milliseconds otherwise.
+    const auto chunkQuarters = noteQuarters ((int) load (globalParameters.bufferSync));
+    const auto chunkSamples = synced ? chunkQuarters * samplesPerQuarter
+                                     : load (globalParameters.bufferSize) * 0.001 * sampleRate;
+
     dsp::GlobalSettings g;
-    g.glideSeconds = globalParameters.glide->load() / 1000.0f;
-    g.freeze = globalParameters.freeze->load() >= 0.5f;
-    g.mix = globalParameters.mix->load() / 100.0f;
-    g.outputGain = juce::Decibels::decibelsToGain (globalParameters.outputGain->load());
+    g.glideSeconds = load (globalParameters.glide) / 1000.0f;
+    g.freeze = load (globalParameters.freeze) >= 0.5f;
+    g.mix = load (globalParameters.mix) / 100.0f;
+    g.outputGain = juce::Decibels::decibelsToGain (load (globalParameters.outputGain));
+    g.glitch.threshold = load (globalParameters.threshold) / 100.0f;
+    g.glitch.outputAndFeedback = (int) load (globalParameters.placement) == (int) params::GlitchPlacement::outputAndFeedback;
+    g.glitch.chunkSamples = juce::jmax (1, (int) std::llround (juce::jmin (chunkSamples, params::maxDelaySeconds * sampleRate)));
+    g.glitch.maxSimultaneous = (int) load (globalParameters.maxGlitches);
+    g.glitch.lengthChunks = range (globalParameters.lengthMin, globalParameters.lengthMax);
+    g.reproducible = load (globalParameters.reproducible) >= 0.5f;
+    g.seed = (int) load (globalParameters.seed);
     engine.setGlobalSettings (g);
+
+    dsp::TransportInfo transport;
+    transport.playing = host.playing;
+    transport.hasPosition = host.hasPosition;
+    transport.ppq = host.ppq;
+    transport.samplesPerQuarter = samplesPerQuarter;
+    transport.synced = synced;
+    transport.chunkQuarters = chunkQuarters;
+    engine.setTransport (transport);
 
     for (int t = 0; t < params::numTaps; ++t)
     {
         const auto& p = tapParameters[(size_t) t];
 
-        double seconds;
-
-        if (synced)
-        {
-            const auto index = juce::jlimit (0, notes.size() - 1, (int) p.timeSync->load());
-            const auto quarters = notes.getReference (index).lengthInQuarters (tempo.barLengthInQuarters);
-            seconds = quarters * 60.0 / tempo.bpm;
-        }
-        else
-        {
-            seconds = p.time->load() / 1000.0;
-        }
+        const auto seconds = synced ? noteQuarters ((int) load (p.timeSync)) * 60.0 / host.bpm
+                                    : load (p.time) / 1000.0;
 
         dsp::TapSettings s;
         s.enabled = p.enabled->load() >= 0.5f;
@@ -124,6 +201,38 @@ void AstralayProcessor::updateEngineSettings()
         s.feedback = p.feedback->load() / 100.0f;
         s.lowCutHz = p.lowCut->load();
         s.highCutHz = p.highCut->load();
+
+        auto& glitch = s.glitch;
+
+        for (size_t i = 0; i < p.probability.size(); ++i)
+            glitch.probability[i] = load (p.probability[i]) / 100.0f;
+
+        if (synced)
+        {
+            const auto sliceSamples = [&] (std::atomic<float>* choice)
+            {
+                const auto index = juce::jlimit (0, (int) stutterNoteIndices.size() - 1, (int) load (choice));
+                return (float) (noteQuarters (stutterNoteIndices[(size_t) index]) * samplesPerQuarter);
+            };
+
+            glitch.stutterSlice = { sliceSamples (p.stutterSyncMin), sliceSamples (p.stutterSyncMax) };
+        }
+        else
+        {
+            glitch.stutterSlice = { msToSamples (load (p.stutterMin)), msToSamples (load (p.stutterMax)) };
+        }
+
+        glitch.grainSize = { msToSamples (load (p.grainSizeMin)), msToSamples (load (p.grainSizeMax)) };
+        glitch.grainDensity = range (p.grainDensityMin, p.grainDensityMax);
+        glitch.pitch = range (p.pitchMin, p.pitchMax);
+        glitch.lpcShift = range (p.lpcMin, p.lpcMax);
+        glitch.cepstralShift = range (p.cepstralMin, p.cepstralMax);
+        glitch.ringFrequency = range (p.ringMin, p.ringMax);
+        glitch.fmRatio = range (p.fmRatioMin, p.fmRatioMax);
+        glitch.fmIndex = range (p.fmIndexMin, p.fmIndexMax);
+        glitch.bits = range (p.bitsMin, p.bitsMax);
+        glitch.rateReduction = range (p.rateMin, p.rateMax);
+
         engine.setTapSettings (t, s);
     }
 }

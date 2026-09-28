@@ -2,6 +2,7 @@
 
 #include <juce_dsp/juce_dsp.h>
 #include "DelayLine.h"
+#include "GlitchChain.h"
 
 namespace astralay::dsp
 {
@@ -16,14 +17,16 @@ struct TapSettings
     float feedback = 0.4f;      // 0 to 1, where 1 is unity.
     float lowCutHz = 20.0f;
     float highCutHz = 20000.0f;
+    TapGlitchSettings glitch;
 };
 
 /** One delay tap: its own delay line and feedback loop.
 
-    Per sample: the delayed signal is read (gliding towards the target delay time), sent to the
-    output with the tap's volume and pan, and fed back through the low cut, high cut and soft-clipper
-    into the delay line together with the new input. Freeze fades the input out, raises the feedback
-    to unity and bypasses the filters and clipper.
+    Per sample: the delayed signal is read (gliding towards the target delay time) and run through
+    the tap's glitches. The output hears the glitched signal when glitch placement is "output and
+    feedback", or the clean one otherwise. The glitched signal is fed back through the low cut,
+    high cut and soft-clipper into the delay line together with the new input. Freeze fades the
+    input out, raises the feedback to unity and bypasses the filters and clipper.
 */
 class Tap
 {
@@ -32,7 +35,15 @@ public:
     void reset();
 
     /** Call once per block before processing. glideSeconds is the global glide time. */
-    void setSettings (const TapSettings& settings, float glideSeconds);
+    void setSettings (const TapSettings& settings, float glideSeconds, const GlitchGlobalSettings& glitchGlobal);
+
+    /** Rolls for new glitches at a chunk boundary. */
+    void onChunkBoundary() { glitches.onChunkBoundary(); }
+
+    /** Restarts the tap's random sequence and stops its glitches. */
+    void restartGlitches (juce::int64 seed);
+
+    const GlitchChain& getGlitches() const noexcept { return glitches; }
 
     /** True when the tap is off and fully faded out, so processing can be skipped. */
     bool isIdle() const noexcept { return idle; }
@@ -47,6 +58,8 @@ public:
 
 private:
     DelayLine line;
+    GlitchChain glitches;
+    bool glitchesHeard = false;
     juce::dsp::StateVariableTPTFilter<float> lowCut, highCut;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> delay;

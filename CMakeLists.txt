@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+﻿cmake_minimum_required(VERSION 3.22)
 
 # Must be set before project(). 10.13 is the lowest target JUCE 9 and CLAP both support comfortably.
 set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
@@ -38,6 +38,7 @@ clap_juce_extensions_plugin(TARGET Astralay
 # Sources shared by the plugin and the test runner: DSP and parameter code with no editor dependencies.
 set(ASTRALAY_CORE_SOURCES
     source/dsp/Engine.cpp
+    source/dsp/GlitchChain.cpp
     source/dsp/Tap.cpp
     source/params/NoteValues.cpp
     source/params/Parameters.cpp
@@ -62,8 +63,7 @@ target_compile_definitions(Astralay
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0
-        JUCE_DISPLAY_SPLASH_SCREEN=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0)
 
 target_link_libraries(Astralay
     PRIVATE
@@ -91,6 +91,8 @@ if(ASTRALAY_BUILD_TESTS)
             tests/ParameterTests.cpp
             tests/StepTests.cpp
             tests/EditorTests.cpp
+            tests/GlitchTests.cpp
+            tests/Benchmark.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp
             source/ui/Announcer.cpp

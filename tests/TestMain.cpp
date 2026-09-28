@@ -13,9 +13,17 @@ namespace
     };
 }
 
-int main()
+void runBenchmark();
+
+int main (int argc, char* argv[])
 {
     juce::ScopedJuceInitialiser_GUI juce;
+
+    if (argc > 1 && juce::String (argv[1]) == "--benchmark")
+    {
+        runBenchmark();
+        return 0;
+    }
 
     ConsoleRunner runner;
     runner.setAssertOnFailure (false);

@@ -15,6 +15,7 @@ void Tap::prepare (double newSampleRate, int maxDelaySamples)
 {
     sampleRate = newSampleRate;
     line.prepare (maxDelaySamples);
+    glitches.prepare (sampleRate);
 
     const juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
 
@@ -38,14 +39,24 @@ void Tap::prepare (double newSampleRate, int maxDelaySamples)
 void Tap::reset()
 {
     line.clear();
+    glitches.reset();
     lowCut.reset();
     highCut.reset();
     enabledGain.setCurrentAndTargetValue (enabled ? 1.0f : 0.0f);
     idle = ! enabled;
 }
 
-void Tap::setSettings (const TapSettings& s, float glideSeconds)
+void Tap::restartGlitches (juce::int64 seed)
 {
+    glitches.reset();
+    glitches.reseed (seed);
+}
+
+void Tap::setSettings (const TapSettings& s, float glideSeconds, const GlitchGlobalSettings& glitchGlobal)
+{
+    glitches.setSettings (s.glitch, glitchGlobal);
+    glitchesHeard = glitchGlobal.outputAndFeedback;
+
     const auto target = juce::jlimit (DelayLine::minDelaySamples, line.getMaxDelay(), s.delaySamples);
     const auto wasIdle = idle;
 
@@ -93,15 +104,16 @@ void Tap::process (float input, float freeze, float& left, float& right) noexcep
 {
     const auto fade = enabledGain.getNextValue();
     const auto delayed = line.read (delay.getNextValue());
+    const auto glitched = glitches.process (delayed);
 
     // Output.
-    const auto out = delayed * gain.getNextValue() * fade;
+    const auto out = (glitchesHeard ? glitched : delayed) * gain.getNextValue() * fade;
     left  += out * leftGain.getNextValue();
     right += out * rightGain.getNextValue();
 
     // Feedback path. Freeze raises the feedback to unity and crossfades the filters and clipper out.
     const auto fb = feedback.getNextValue();
-    const auto looped = delayed * (fb + (1.0f - fb) * freeze);
+    const auto looped = glitched * (fb + (1.0f - fb) * freeze);
     const auto shaped = softClip (highCut.processSample (0, lowCut.processSample (0, looped)));
     const auto returned = shaped + (looped - shaped) * freeze;
 
@@ -117,6 +129,7 @@ void Tap::endBlock() noexcept
     {
         // Fully faded out: clear the line so re-enabling starts silent rather than replaying old audio.
         line.clear();
+        glitches.reset();
         lowCut.reset();
         highCut.reset();
         idle = true;

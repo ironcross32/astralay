@@ -13,9 +13,26 @@ struct GlobalSettings
     bool freeze = false;
     float mix = 0.5f;           // 0 (dry) to 1 (wet).
     float outputGain = 1.0f;    // Linear.
+
+    GlitchGlobalSettings glitch;
+    bool reproducible = false;
+    int seed = 0;
 };
 
-/** The whole signal path: 16 taps, freeze, dry/wet mix and output gain. */
+/** The host's transport, read once per block. */
+struct TransportInfo
+{
+    bool playing = false;
+    bool hasPosition = false;       // ppq is valid.
+    double ppq = 0.0;               // Position in quarter notes at the start of the block.
+    double samplesPerQuarter = 0.0;
+    bool synced = false;            // Host sync is on, so chunks follow the beat grid.
+    double chunkQuarters = 0.25;    // Chunk length in quarter notes when synced.
+};
+
+/** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, dry/wet mix and output
+    gain.
+*/
 class Engine
 {
 public:
@@ -27,18 +44,30 @@ public:
     void setGlobalSettings (const GlobalSettings& settings);
     void setTapSettings (int tapIndex, const TapSettings& settings);
 
+    /** Call once per block before process(). Aligns the chunk grid to the host's beats when synced,
+        and restarts the random sequences when the transport starts with reproducible randomness on.
+    */
+    void setTransport (const TransportInfo& transport);
+
     /** Processes one block. inRight may be null for a mono input. The input and output pointers may
         alias (in-place processing).
     */
     void process (const float* inLeft, const float* inRight, float* outLeft, float* outRight, int numSamples) noexcept;
 
+    const Tap& getTap (int tapIndex) const { return taps[(size_t) tapIndex]; }
+
 private:
+    void restartRandomness (juce::int64 baseSeed);
+
     std::array<Tap, numTaps> taps;
     GlobalSettings global;
 
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> freeze;
     juce::SmoothedValue<float> dryGain, wetGain, outputGain;
     double sampleRate = 44100.0;
+
+    int samplesToChunk = 0;
+    bool wasPlaying = false;
 };
 
 } // namespace astralay::dsp

@@ -24,6 +24,33 @@ void Engine::prepare (double newSampleRate, int, double maxDelaySeconds)
         s->reset (sampleRate, gainRampSeconds);
 
     reset();
+    restartRandomness (global.reproducible ? global.seed : juce::Random::getSystemRandom().nextInt64());
+}
+
+void Engine::restartRandomness (juce::int64 baseSeed)
+{
+    // Each tap has its own sequence, so enabling one tap doesn't change another's glitches.
+    for (size_t t = 0; t < taps.size(); ++t)
+        taps[t].restartGlitches (baseSeed * 1000003 + (juce::int64) t);
+
+    samplesToChunk = 0;
+}
+
+void Engine::setTransport (const TransportInfo& transport)
+{
+    if (transport.playing && ! wasPlaying && global.reproducible)
+        restartRandomness (global.seed);
+
+    wasPlaying = transport.playing;
+
+    if (transport.synced && transport.playing && transport.hasPosition
+        && transport.chunkQuarters > 0.0 && transport.samplesPerQuarter > 0.0)
+    {
+        // Distance to the next multiple of the chunk length on the host's beat grid.
+        const auto position = transport.ppq / transport.chunkQuarters;
+        const auto remaining = 1.0 - (position - std::floor (position));
+        samplesToChunk = remaining > 1.0 - 1.0e-6 ? 0 : (int) std::llround (remaining * transport.chunkQuarters * transport.samplesPerQuarter);
+    }
 }
 
 void Engine::reset()
@@ -53,13 +80,26 @@ void Engine::setGlobalSettings (const GlobalSettings& settings)
 
 void Engine::setTapSettings (int tapIndex, const TapSettings& settings)
 {
-    taps[(size_t) tapIndex].setSettings (settings, global.glideSeconds);
+    taps[(size_t) tapIndex].setSettings (settings, global.glideSeconds, global.glitch);
 }
 
 void Engine::process (const float* inLeft, const float* inRight, float* outLeft, float* outRight, int numSamples) noexcept
 {
+    const auto chunk = juce::jmax (1, global.glitch.chunkSamples);
+
     for (int i = 0; i < numSamples; ++i)
     {
+        if (samplesToChunk <= 0)
+        {
+            for (auto& tap : taps)
+                if (! tap.isIdle())
+                    tap.onChunkBoundary();
+
+            samplesToChunk = chunk;
+        }
+
+        --samplesToChunk;
+
         const auto dryLeft = inLeft[i];
         const auto dryRight = inRight != nullptr ? inRight[i] : dryLeft;
         const auto mono = inRight != nullptr ? 0.5f * (dryLeft + dryRight) : dryLeft;

@@ -54,6 +54,32 @@ private:
         std::atomic<float>* feedback = nullptr;
         std::atomic<float>* lowCut = nullptr;
         std::atomic<float>* highCut = nullptr;
+
+        std::array<std::atomic<float>*, astralay::dsp::numGlitchTypes> probability {};
+        std::atomic<float>* stutterMin = nullptr;
+        std::atomic<float>* stutterMax = nullptr;
+        std::atomic<float>* stutterSyncMin = nullptr;
+        std::atomic<float>* stutterSyncMax = nullptr;
+        std::atomic<float>* grainSizeMin = nullptr;
+        std::atomic<float>* grainSizeMax = nullptr;
+        std::atomic<float>* grainDensityMin = nullptr;
+        std::atomic<float>* grainDensityMax = nullptr;
+        std::atomic<float>* pitchMin = nullptr;
+        std::atomic<float>* pitchMax = nullptr;
+        std::atomic<float>* lpcMin = nullptr;
+        std::atomic<float>* lpcMax = nullptr;
+        std::atomic<float>* cepstralMin = nullptr;
+        std::atomic<float>* cepstralMax = nullptr;
+        std::atomic<float>* ringMin = nullptr;
+        std::atomic<float>* ringMax = nullptr;
+        std::atomic<float>* fmRatioMin = nullptr;
+        std::atomic<float>* fmRatioMax = nullptr;
+        std::atomic<float>* fmIndexMin = nullptr;
+        std::atomic<float>* fmIndexMax = nullptr;
+        std::atomic<float>* bitsMin = nullptr;
+        std::atomic<float>* bitsMax = nullptr;
+        std::atomic<float>* rateMin = nullptr;
+        std::atomic<float>* rateMax = nullptr;
     };
 
     struct GlobalParameters
@@ -63,20 +89,37 @@ private:
         std::atomic<float>* freeze = nullptr;
         std::atomic<float>* mix = nullptr;
         std::atomic<float>* outputGain = nullptr;
+
+        std::atomic<float>* threshold = nullptr;
+        std::atomic<float>* placement = nullptr;
+        std::atomic<float>* bufferSize = nullptr;
+        std::atomic<float>* bufferSync = nullptr;
+        std::atomic<float>* maxGlitches = nullptr;
+        std::atomic<float>* lengthMin = nullptr;
+        std::atomic<float>* lengthMax = nullptr;
+        std::atomic<float>* reproducible = nullptr;
+        std::atomic<float>* seed = nullptr;
     };
 
-    struct Tempo
+    /** Tempo and transport from the host, with fallbacks when it provides none. */
+    struct HostInfo
     {
         double bpm = astralay::params::fallbackTempo;
         double barLengthInQuarters = 4.0;
+        bool playing = false;
+        bool hasPosition = false;
+        double ppq = 0.0;
     };
 
-    Tempo readTempo() const;
+    HostInfo readHost() const;
     void updateEngineSettings();
 
     juce::AudioProcessorValueTreeState state;
     std::array<TapParameters, astralay::params::numTaps> tapParameters;
     GlobalParameters globalParameters;
+
+    /** For each synced stutter slice choice, its index in NoteValues::all(). */
+    std::vector<int> stutterNoteIndices;
 
     astralay::dsp::Engine engine;
 

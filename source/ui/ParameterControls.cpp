@@ -143,8 +143,12 @@ void ParameterSlider::bind (juce::RangedAudioParameter& newParameter, Unit unit,
     attachment->sendInitialUpdate();
     updateText();
 
-    if (auto* handler = getAccessibilityHandler())
-        handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+    // Only the focused control needs to tell the screen reader its value changed. Switching taps
+    // rebinds dozens of sliders, and sending an event for each one makes the switch lag while the
+    // screen reader processes them.
+    if (hasKeyboardFocus (false))
+        if (auto* handler = getAccessibilityHandler())
+            handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
 }
 
 juce::String ParameterSlider::getTextFromValue (double value)

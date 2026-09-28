@@ -13,3 +13,6 @@ CMakeUserPresets.json
 # OS files
 .DS_Store
 Thumbs.db
+build-clangd/
+compile_commands.json
+.clangd

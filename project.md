@@ -178,7 +178,7 @@ Previous and next group controls don't actually place focus on the group itself,
 
 Sliders:
 - All controls that increase and decrease a value should be sliders.
-- HOME and END jump to the minimum and maximum respectively.
+- HOME and END jump to the maximum and minimum respectively.
 - Arrow keys increase and decrease by a musical step suited to the value's unit. Adding SHIFT gives a fine adjustment; adding CTRL (Windows) or CMD (macOS) gives a coarse adjustment.
     - dB: 0.5 dB, fine 0.1 dB, coarse 3 dB
     - Milliseconds: 10 ms, fine 1 ms, coarse 100 ms
@@ -186,4 +186,5 @@ Sliders:
     - Semitones: 1, fine 0.1, coarse 12
     - Note values: one step through the list; no fine step; coarse jumps between straight values only
 - DELETE (BACKSPACE on macOS) sets the slider to its default value.
-- ENTER presents a type-in field. It accepts plain numbers in the control's own unit, optional unit suffixes (ms, s, Hz, kHz, dB, %, st), "-inf" for volume, and note values such as "1/8", "1/8d", "1/8t", "1/64" and "4 bars". ENTER accepts the value if it is valid and in range. An out-of-range value is rejected: the screen reader announces the valid range (for example "Out of range, 1 to 5000 milliseconds") and the field stays open. ESC cancels.
+- ENTER presents a type-in field. It accepts plain numbers in the control's own unit, optional unit suffixes (ms, s, Hz, kHz, dB, %, st), "-inf" for volume, and note values such as "1/8", "1/8d", "1/8t", "1/64" and "4 bars". ENTER accepts the value if it is valid and in range. An out-of-range or unrecognised value is rejected: the screen reader announces the valid range (for example "Out of range, 1 ms to 5 s") and the field stays open with the rejected text selected, so the user can either type over it or move into it to fix it. ESC cancels.
+- Announcements (such as type-in errors) go through the user's screen reader. On Windows this uses UI Automation notification events rather than JUCE's default, which speaks through the system voice.

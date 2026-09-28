@@ -39,6 +39,10 @@ public:
 
     juce::AudioProcessorValueTreeState& getState() noexcept { return state; }
 
+    /** The tap shown in the editor (zero-based). Saved with the session but not a host parameter. */
+    int getSelectedTap() const;
+    void setSelectedTap (int tapIndex);
+
 private:
     struct TapParameters
     {

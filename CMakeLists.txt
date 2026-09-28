@@ -41,13 +41,18 @@ set(ASTRALAY_CORE_SOURCES
     source/dsp/Tap.cpp
     source/params/NoteValues.cpp
     source/params/Parameters.cpp
-    source/params/Units.cpp)
+    source/params/Units.cpp
+    source/ui/Steps.cpp)
 
 target_sources(Astralay
     PRIVATE
         ${ASTRALAY_CORE_SOURCES}
         source/PluginProcessor.cpp
-        source/PluginEditor.cpp)
+        source/PluginEditor.cpp
+        source/ui/Announcer.cpp
+        source/ui/HelpText.cpp
+        source/ui/ParameterControls.cpp
+        source/ui/Theme.cpp)
 
 target_include_directories(Astralay
     PRIVATE
@@ -83,7 +88,15 @@ if(ASTRALAY_BUILD_TESTS)
             ${ASTRALAY_CORE_SOURCES}
             tests/TestMain.cpp
             tests/DspTests.cpp
-            tests/ParameterTests.cpp)
+            tests/ParameterTests.cpp
+            tests/StepTests.cpp
+            tests/EditorTests.cpp
+            source/PluginProcessor.cpp
+            source/PluginEditor.cpp
+            source/ui/Announcer.cpp
+            source/ui/HelpText.cpp
+            source/ui/ParameterControls.cpp
+            source/ui/Theme.cpp)
 
     target_include_directories(AstralayTests
         PRIVATE
@@ -92,7 +105,8 @@ if(ASTRALAY_BUILD_TESTS)
     target_compile_definitions(AstralayTests
         PRIVATE
             JUCE_WEB_BROWSER=0
-            JUCE_USE_CURL=0)
+            JUCE_USE_CURL=0
+            JucePlugin_Name="Astralay")
 
     target_link_libraries(AstralayTests
         PRIVATE

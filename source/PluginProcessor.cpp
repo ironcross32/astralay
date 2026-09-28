@@ -5,6 +5,7 @@
 namespace
 {
     constexpr int stateVersion = 1;
+    const juce::Identifier selectedTapProperty { "selectedTap" };
 }
 
 AstralayProcessor::AstralayProcessor()
@@ -140,6 +141,16 @@ void AstralayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     auto* right = buffer.getWritePointer (1);
 
     engine.process (left, monoInput ? nullptr : right, left, right, numSamples);
+}
+
+int AstralayProcessor::getSelectedTap() const
+{
+    return juce::jlimit (0, astralay::params::numTaps - 1, (int) state.state.getProperty (selectedTapProperty, 0));
+}
+
+void AstralayProcessor::setSelectedTap (int tapIndex)
+{
+    state.state.setProperty (selectedTapProperty, tapIndex, nullptr);
 }
 
 juce::AudioProcessorEditor* AstralayProcessor::createEditor()

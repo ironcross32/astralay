@@ -14,7 +14,7 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 
 ## Build, dependencies and licensing
 
-- Build system: CMake (not Projucer). macOS builds are universal binaries (Apple Silicon and Intel), with a minimum of macOS 10.13.
+- Build system: CMake (not Projucer). macOS builds are universal binaries (Apple Silicon and Intel), with a minimum of macOS 12.0 (the oldest version Xcode 27 supports). Every macOS bundle is ad-hoc signed as the last post-build step, which Apple Silicon requires for local builds; distributed builds need Developer ID signing and notarisation.
 - JUCE is included as a git submodule of this repository at `libs/JUCE`, pinned to the release tag 9.0.3. It is never installed or referenced from outside the repository.
 - CLAP: JUCE 9.0.3 has no native CLAP support, so CLAP builds use `clap-juce-extensions`, a second git submodule at `libs/clap-juce-extensions`. It has nested submodules of its own, so clone with `git clone --recursive` or run `git submodule update --init --recursive`. Revisit native CLAP if a later JUCE release adds it.
 - FFTs use PFFFT (git submodule at `libs/pffft`, built as a static library), since JUCE's fallback FFT on Windows is roughly 19 times slower. PFFFT's BSD-style licence requires its copyright notice in the documentation of binary releases.

@@ -86,14 +86,27 @@ cmake -S . -B build -G Xcode
 cmake --build build --config Release --parallel
 ```
 
-macOS builds are universal binaries (Apple Silicon and Intel) and need macOS 10.13 or later. The AU is built only on macOS.
+Or, with [Ninja](https://ninja-build.org):
+
+```
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+
+Leave out `--target` so that `cmake --build` builds everything: all four formats and the test program. If it prints `ninja: no work to do`, everything is already up to date; add `--clean-first` to rebuild from scratch. If a build stops partway through, the bundle folders can still exist with nothing inside them, and macOS then reports the standalone as damaged. Check that `Contents/MacOS` inside each bundle holds an `Astralay` binary.
+
+macOS builds are universal binaries (Apple Silicon and Intel) and need macOS 12 or later, the oldest version Xcode 27 supports. If you're reusing a build folder configured with an older minimum version, delete it or pass `-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0`, since CMake keeps the old value in its cache. The AU is built only on macOS.
+
+Every bundle is ad-hoc signed as the last step of the build, which Apple Silicon needs before it will load the plugins or run the standalone. No `xattr` or `chmod` is needed for local builds. Ad-hoc signing isn't enough for builds you distribute: those need signing with a Developer ID and notarising.
 
 ### Output
 
 The built plugins are in `build/Astralay_artefacts/Release/`, in the `VST3`, `CLAP`, `AU` and `Standalone` folders. To use them, copy them to the usual plugin folders:
 
 - Windows: VST3 to `C:\Program Files\Common Files\VST3`, CLAP to `C:\Program Files\Common Files\CLAP`.
-- macOS: VST3 to `~/Library/Audio/Plug-Ins/VST3`, CLAP to `~/Library/Audio/Plug-Ins/CLAP`, AU to `~/Library/Audio/Plug-Ins/Components`.
+- macOS: VST3 to `~/Library/Audio/Plug-Ins/VST3`, CLAP to `~/Library/Audio/Plug-Ins/CLAP`, AU to `~/Library/Audio/Plug-Ins/Components`. Create the folders if they don't exist, and copy with `ditto` (for example `ditto build/Astralay_artefacts/Release/VST3/Astralay.vst3 ~/Library/Audio/Plug-Ins/VST3/Astralay.vst3`) so the signature is kept.
+
+To check the AU on macOS, run `auval -v aufx Alay Ilbs`. If a host doesn't show Astralay after you replace a broken copy, clear its plugin cache and re-scan. In Reaper, that's Preferences, Plug-ins, VST, "Clear cache/re-scan".
 
 ## Testing
 

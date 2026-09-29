@@ -1,7 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.22)
 
-# Must be set before project(). 10.13 is the lowest target JUCE 9 and CLAP both support comfortably.
-set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 # Universal binaries: Apple Silicon and Intel.
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
@@ -100,6 +99,16 @@ target_link_libraries(Astralay
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Apple Silicon refuses to load unsigned code, and JUCE writes moduleinfo.json into the VST3 after
+# signing it. Ad-hoc sign every bundle as the last post-build step so the seal covers everything.
+if(APPLE)
+    foreach(format IN ITEMS VST3 CLAP AU Standalone)
+        add_custom_command(TARGET Astralay_${format} POST_BUILD
+            COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:Astralay_${format}>"
+            VERBATIM)
+    endforeach()
+endif()
 
 # Unit tests for the DSP and parameter code, run with CTest or directly.
 option(ASTRALAY_BUILD_TESTS "Build the Astralay test runner" ON)

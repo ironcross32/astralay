@@ -172,7 +172,7 @@ Every control in the tap group includes the tap number in its accessible name (f
 
 ### Help tags
 
-Every control has a help tag of one or two plain sentences describing what it does and its range. Claude drafts them, kept together in one table in the code so they are easy to edit. They are reviewed by the author before release.
+Every control has a help tag of one or two plain sentences describing what it does. Ranges are left out, since screen readers already announce each value and the extra words add verbosity. Claude drafts them, kept together in one table in the code so they are easy to edit. They are reviewed by the author before release.
 
 ### Keyboard
 

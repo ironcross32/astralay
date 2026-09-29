@@ -20,7 +20,8 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 - FFTs use PFFFT (git submodule at `libs/pffft`, built as a static library), since JUCE's fallback FFT on Windows is roughly 19 times slower. PFFFT's BSD-style licence requires its copyright notice in the documentation of binary releases.
 - License: Astralay's own source is MIT. Release builds link JUCE under the AGPLv3, so distributed binaries are AGPLv3; the README must explain this.
 - The Surge XT code base at D:\programming\surge is an excellent example of good JUCE accessibility. Learn from it, but do not copy code from it (Surge is GPL-3).
-- Every build must pass pluginval at a strict level.
+- Every build must pass pluginval at strictness level 10. (pluginval checks VST3 and AU; it doesn't support CLAP. Steinberg's separate VST3 validator is optional and not currently run.)
+- Release documentation: the README explains building and licensing, and `THIRD_PARTY_NOTICES.md` carries the notices the third-party licences require. Binary releases must include both, plus the AGPLv3 text.
 - Automated tests cover the DSP pieces: taps, the glitch scheduler, and seeded determinism.
 
 ## Signal flow

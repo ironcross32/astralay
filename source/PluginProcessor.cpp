@@ -167,6 +167,93 @@ juce::String AstralayProcessor::savePresetFile (const juce::File& file)
     return "Saved " + name;
 }
 
+void AstralayProcessor::applyEdit (const std::map<juce::String, float>& values, const juce::String& description,
+                                   bool mergeWithPrevious)
+{
+    const auto before = history.capture (getPresetName(), isPresetModified());
+    auto after = before;
+    after.modified = true;
+
+    for (const auto& [id, value] : values)
+        after.values[id] = value;
+
+    history.applyAndRecord (before, after, description, mergeWithPrevious);
+}
+
+void AstralayProcessor::copyTapSettings (int tapIndex, const juce::String& suffix)
+{
+    const auto prefix = astralay::params::tapId (tapIndex, "");
+
+    copiedSuffix = suffix;
+    copiedValues.clear();
+
+    for (auto* parameter : getParameters())
+    {
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameter); withId != nullptr && withId->paramID.startsWith (prefix))
+        {
+            const auto key = withId->paramID.substring (prefix.length());
+
+            if (suffix.isEmpty() ? key != astralay::params::tap::enabled : key == suffix)
+                copiedValues[key] = parameter->getValue();
+        }
+    }
+}
+
+bool AstralayProcessor::pasteTapSettings (int tapIndex, const juce::String& suffix)
+{
+    if (copiedValues.empty() || suffix != copiedSuffix)
+        return false;
+
+    const auto all = tapIndex == allTaps;
+    std::map<juce::String, float> values;
+
+    for (int t = all ? 0 : tapIndex; t < (all ? astralay::params::numTaps : tapIndex + 1); ++t)
+        for (const auto& [key, value] : copiedValues)
+            values[astralay::params::tapId (t, key.toRawUTF8())] = value;
+
+    const auto what = suffix.isEmpty() ? juce::String ("tap")
+                                       : astralay::params::tapParameterName (0, suffix.toRawUTF8()).fromFirstOccurrenceOf ("Tap 1 ", false, false);
+
+    applyEdit (values, "paste " + what + (all ? " to all" : ""));
+    return true;
+}
+
+bool AstralayProcessor::stepSelectedTapTimes (int direction, bool mergeWithPrevious)
+{
+    using namespace astralay::params;
+
+    const auto synced = globalParameters.sync->load() >= 0.5f;
+    std::map<juce::String, float> values;
+
+    for (int t = 0; t < numTaps; ++t)
+    {
+        if ((performanceSelection & (1u << t)) == 0 || tapParameters[(size_t) t].enabled->load() < 0.5f)
+            continue;
+
+        const auto id = tapId (t, synced ? tap::timeSync : tap::time);
+        const auto* parameter = state.getParameter (id);
+        const auto& range = parameter->getNormalisableRange();
+        const auto current = range.convertFrom0to1 (parameter->getValue());
+
+        const auto next = synced ? current + (float) direction
+                                 : direction > 0 ? current * performanceTimeStep : current / performanceTimeStep;
+
+        // The whole selection stops at the first limit, so the taps keep their spacing.
+        const auto tolerance = (range.end - range.start) * 1.0e-6f;
+
+        if (next > range.end + tolerance || next < range.start - tolerance)
+            return false;
+
+        values[id] = range.convertTo0to1 (juce::jlimit (range.start, range.end, next));
+    }
+
+    if (values.empty())
+        return false;
+
+    applyEdit (values, "tap times", mergeWithPrevious);
+    return true;
+}
+
 void AstralayProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock, astralay::params::maxDelaySeconds);

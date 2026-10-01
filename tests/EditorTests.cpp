@@ -69,10 +69,11 @@ public:
             for (auto* c : stops)
                 titles.add (titleOf (*c));
 
-            // Main 5, tap 2 + 6 basics + 31 glitch controls (synced stutter slices share rows), global 15.
-            expectEquals ((int) stops.size(), 59);
+            // Main 5, tap 2 + 6 basics + 31 glitch controls (synced stutter slices share rows), global 15,
+            // performance 1.
+            expectEquals ((int) stops.size(), 60);
 
-            if (stops.size() != 59)
+            if (stops.size() != 60)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
             const juce::StringArray expectedStart { "Undo", "Redo", "Save", "Load", "Preset: Init",
@@ -89,7 +90,8 @@ public:
                                                   "Glitch Threshold", "Glitch Placement", "Buffer Size",
                                                   "Maximum Simultaneous Glitches", "Minimum Glitch Length",
                                                   "Maximum Glitch Length", "Reproducible Randomness", "Seed",
-                                                  "Smear Amount", "Smear Size", "Mix", "Output Gain" };
+                                                  "Smear Amount", "Smear Size", "Mix", "Output Gain",
+                                                  "Performance area" };
 
             for (int i = 0; i < expectedEnd.size(); ++i)
                 expectEquals (titles[titles.size() - expectedEnd.size() + i], expectedEnd[i]);
@@ -118,6 +120,11 @@ public:
                 expectEquals (groupPath (*undo).joinIntoString ("/"), juce::String ("Main"));
             else
                 expect (false, "Undo button missing");
+
+            if (auto* pad = findByTitle (ed, "Performance area"))
+                expectEquals (groupPath (*pad).joinIntoString ("/"), juce::String ("Performance"));
+            else
+                expect (false, "Performance area missing");
         }
 
         beginTest ("Every control has a help tag");
@@ -201,7 +208,274 @@ public:
 
                 time->keyPressed (juce::KeyPress (juce::KeyPress::deleteKey));
                 expectWithinAbsoluteError (valueOf (processor, id), 500.0f, 0.01f);
+
+                // Backspace belongs to the editor, which turns the tap on or off with it.
+                expect (! time->keyPressed (juce::KeyPress (juce::KeyPress::backspaceKey)));
             }
+        }
+
+        beginTest ("Tap keys switch taps and turn them on and off");
+        {
+            const auto shift = juce::ModifierKeys::shiftModifier;
+
+            expect (ed.keyPressed (juce::KeyPress ('5')));
+            expectEquals (processor.getSelectedTap(), 4);
+            expect (findByTitle (ed, "Tap 5 Feedback") != nullptr);
+
+            ed.keyPressed (juce::KeyPress ('0'));
+            expectEquals (processor.getSelectedTap(), 9);
+
+            ed.keyPressed (juce::KeyPress ('1', shift, '!'));
+            expectEquals (processor.getSelectedTap(), 10);
+
+            ed.keyPressed (juce::KeyPress ('6', shift, '^'));
+            expectEquals (processor.getSelectedTap(), 15);
+
+            // Shift+7 and up name no tap.
+            expect (! ed.keyPressed (juce::KeyPress ('7', shift, '&')));
+            expectEquals (processor.getSelectedTap(), 15);
+
+            // Minus and equals wrap in both directions.
+            ed.keyPressed (juce::KeyPress ('='));
+            expectEquals (processor.getSelectedTap(), 0);
+
+            ed.keyPressed (juce::KeyPress ('-'));
+            expectEquals (processor.getSelectedTap(), 15);
+
+            // Backspace toggles the selected tap as an undoable edit.
+            const auto id = tapId (15, tap::enabled);
+            expect (valueOf (processor, id) < 0.5f);
+
+            ed.keyPressed (juce::KeyPress (juce::KeyPress::backspaceKey));
+            expect (valueOf (processor, id) >= 0.5f);
+
+            processor.getHistory().undo();
+            expect (valueOf (processor, id) < 0.5f);
+
+            ed.keyPressed (juce::KeyPress ('1'));
+            expectEquals (processor.getSelectedTap(), 0);
+        }
+
+        beginTest ("Freeze and host sync have shortcuts");
+        {
+            const auto command = juce::ModifierKeys::commandModifier;
+
+           #if JUCE_MAC
+            const auto freezeModifier = juce::ModifierKeys::commandModifier;
+           #else
+            const auto freezeModifier = juce::ModifierKeys::altModifier;
+           #endif
+
+            ed.keyPressed (juce::KeyPress ('f', freezeModifier, 0));
+            expect (valueOf (processor, global::freeze) >= 0.5f);
+
+            ed.keyPressed (juce::KeyPress ('f', freezeModifier, 0));
+            expect (valueOf (processor, global::freeze) < 0.5f);
+
+            ed.keyPressed (juce::KeyPress ('y', command, 0));
+            expect (valueOf (processor, global::sync) >= 0.5f);
+
+            ed.keyPressed (juce::KeyPress ('y', command, 0));
+            expect (valueOf (processor, global::sync) < 0.5f);
+        }
+
+        beginTest ("The performance area selects taps, moves their times and freezes");
+        {
+            auto* pad = findByTitle (ed, "Performance area");
+            expect (pad != nullptr);
+
+            if (pad != nullptr)
+            {
+                const auto shift = juce::ModifierKeys::shiftModifier;
+                const auto backspace = juce::KeyPress::backspaceKey;
+                const auto release = [pad] { pad->keyStateChanged (false); };
+
+                expectEquals ((int) processor.getPerformanceSelection(), 0xffff);
+
+                pad->keyPressed (juce::KeyPress ('3'));
+                expectEquals ((int) processor.getPerformanceSelection(), 0xfffb);
+
+                pad->keyPressed (juce::KeyPress ('3'));
+                pad->keyPressed (juce::KeyPress ('6', shift, '^'));
+                expectEquals ((int) processor.getPerformanceSelection(), 0x7fff);
+
+                // Backspace: all, or none once all are selected. Shift+Backspace: even, then odd.
+                pad->keyPressed (juce::KeyPress (backspace));
+                expectEquals ((int) processor.getPerformanceSelection(), 0xffff);
+
+                pad->keyPressed (juce::KeyPress (backspace));
+                expectEquals ((int) processor.getPerformanceSelection(), 0);
+
+                pad->keyPressed (juce::KeyPress (backspace, shift, 0));
+                expectEquals ((int) processor.getPerformanceSelection(), 0xaaaa);
+
+                pad->keyPressed (juce::KeyPress (backspace, shift, 0));
+                expectEquals ((int) processor.getPerformanceSelection(), 0x5555);
+
+                pad->keyPressed (juce::KeyPress (backspace));
+                expectEquals ((int) processor.getPerformanceSelection(), 0xffff);
+
+                // The selected tap is untouched by all of that.
+                expectEquals (processor.getSelectedTap(), 0);
+
+                // Arrows scale the taps that are selected and on: tap 1 here, and tap 2 once it is on.
+                const auto time1 = tapId (0, tap::time), time2 = tapId (1, tap::time), time3 = tapId (2, tap::time);
+                auto* enabled2 = processor.getState().getParameter (tapId (1, tap::enabled));
+                auto* time2Parameter = processor.getState().getParameter (time2);
+
+                enabled2->setValueNotifyingHost (1.0f);
+                time2Parameter->setValueNotifyingHost (time2Parameter->convertTo0to1 (250.0f));
+                processor.getHistory().clear();
+
+                pad->keyPressed (juce::KeyPress (juce::KeyPress::upKey));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, time1), 550.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, time2), 275.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, time3), 500.0f, 0.01f);
+
+                // One undo step for all the taps, and one for a held key's repeats.
+                processor.getHistory().undo();
+                expectWithinAbsoluteError (valueOf (processor, time1), 500.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, time2), 250.0f, 0.01f);
+                expect (! processor.getHistory().canUndo());
+
+                pad->keyPressed (juce::KeyPress (juce::KeyPress::downKey));
+                pad->keyPressed (juce::KeyPress (juce::KeyPress::downKey));
+                pad->keyPressed (juce::KeyPress (juce::KeyPress::downKey));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, time1), 500.0f / 1.331f, 0.01f);
+
+                processor.getHistory().undo();
+                expectWithinAbsoluteError (valueOf (processor, time1), 500.0f, 0.01f);
+                expect (! processor.getHistory().canUndo());
+
+                // A tap at its limit stops the whole selection.
+                time2Parameter->setValueNotifyingHost (1.0f);
+                pad->keyPressed (juce::KeyPress (juce::KeyPress::upKey));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, time1), 500.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, time2), 5000.0f, 0.01f);
+
+                // Unselected, it no longer holds the others back.
+                pad->keyPressed (juce::KeyPress ('2'));
+                pad->keyPressed (juce::KeyPress (juce::KeyPress::upKey));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, time1), 550.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, time2), 5000.0f, 0.01f);
+
+                // With host sync on, the arrows step through note values.
+                auto* sync = processor.getState().getParameter (global::sync);
+                const auto synced1 = tapId (0, tap::timeSync);
+                const auto before = valueOf (processor, synced1);
+
+                sync->setValueNotifyingHost (1.0f);
+                pad->keyPressed (juce::KeyPress (juce::KeyPress::upKey));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, synced1), before + 1.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, time1), 550.0f, 0.01f);
+                sync->setValueNotifyingHost (0.0f);
+
+                pad->keyPressed (juce::KeyPress ('2'));
+                enabled2->setValueNotifyingHost (0.0f);
+                processor.getHistory().clear();
+
+                // F freezes while held, without an undo step; from a latched freeze it ends off.
+                pad->keyPressed (juce::KeyPress ('f'));
+                expect (valueOf (processor, global::freeze) >= 0.5f);
+                release();
+                expect (valueOf (processor, global::freeze) < 0.5f);
+                expect (! processor.getHistory().canUndo());
+
+                pad->keyPressed (juce::KeyPress ('f', shift, 'F'));
+                release();
+                expect (valueOf (processor, global::freeze) >= 0.5f);
+
+                pad->keyPressed (juce::KeyPress ('f'));
+                expect (valueOf (processor, global::freeze) >= 0.5f);
+                release();
+                expect (valueOf (processor, global::freeze) < 0.5f);
+
+                // The selection outlives the editor window.
+                pad->keyPressed (juce::KeyPress ('4'));
+                expectEquals ((int) processor.getPerformanceSelection(), 0xfff7);
+
+                {
+                    std::unique_ptr<juce::AudioProcessorEditor> second (processor.createEditor());
+                    second->addToDesktop (juce::ComponentPeer::windowIsTemporary);
+
+                    auto* secondPad = findByTitle (*second, "Performance area");
+                    expect (secondPad != nullptr);
+
+                    if (secondPad != nullptr)
+                    {
+                        secondPad->keyPressed (juce::KeyPress ('4'));
+                        expectEquals ((int) processor.getPerformanceSelection(), 0xffff);
+                    }
+                }
+
+                processor.setPerformanceSelection (AstralayProcessor::allTapsSelected);
+            }
+        }
+
+        beginTest ("A tap or one of its settings can be copied and pasted");
+        {
+            auto& state = processor.getState();
+            const auto set = [&state] (const juce::String& id, float plainValue)
+            {
+                auto* p = state.getParameter (id);
+                p->setValueNotifyingHost (p->convertTo0to1 (plainValue));
+            };
+
+            expect (! processor.pasteTapSettings (1, {}), "Nothing copied yet");
+
+            set (tapId (0, tap::feedback), 70.0f);
+            set (tapId (0, tap::pan), -30.0f);
+            set (tapId (0, tap::pitchMax), 7.0f);
+            processor.getHistory().clear();
+
+            // A whole tap: everything but whether it is on.
+            processor.copyTapSettings (0, {});
+            expect (! processor.pasteTapSettings (2, tap::feedback), "A tap doesn't paste onto one setting");
+            expect (processor.pasteTapSettings (2, {}));
+
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::feedback)), 70.0f, 0.01f);
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::pan)), -30.0f, 0.01f);
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::pitchMax)), 7.0f, 0.01f);
+            expect (valueOf (processor, tapId (2, tap::enabled)) < 0.5f);
+            expect (processor.isPresetModified());
+
+            expectEquals (processor.getHistory().undo(), juce::String ("Undo paste tap"));
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::feedback)), 40.0f, 0.01f);
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::pan)), 0.0f, 0.01f);
+
+            // One setting: pastes only onto the same setting, on one tap or all of them.
+            processor.copyTapSettings (0, tap::feedback);
+            expect (! processor.pasteTapSettings (2, tap::pan));
+            expect (! processor.pasteTapSettings (2, {}));
+            expect (processor.pasteTapSettings (2, tap::feedback));
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::feedback)), 70.0f, 0.01f);
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::pan)), 0.0f, 0.01f);
+
+            expect (processor.pasteTapSettings (AstralayProcessor::allTaps, tap::feedback));
+
+            for (int t = 0; t < numTaps; ++t)
+                expectWithinAbsoluteError (valueOf (processor, tapId (t, tap::feedback)), 70.0f, 0.01f);
+
+            expectEquals (processor.getHistory().undo(), juce::String ("Undo paste Feedback to all"));
+            expectWithinAbsoluteError (valueOf (processor, tapId (5, tap::feedback)), 40.0f, 0.01f);
+            expectWithinAbsoluteError (valueOf (processor, tapId (2, tap::feedback)), 70.0f, 0.01f);
+
+            // Pasting a whole tap onto all of them leaves each tap on or off as it was.
+            processor.copyTapSettings (0, {});
+            expect (processor.pasteTapSettings (AstralayProcessor::allTaps, {}));
+            expectWithinAbsoluteError (valueOf (processor, tapId (15, tap::pan)), -30.0f, 0.01f);
+            expect (valueOf (processor, tapId (0, tap::enabled)) >= 0.5f);
+            expect (valueOf (processor, tapId (15, tap::enabled)) < 0.5f);
+
+            processor.getHistory().undo();
+            set (tapId (0, tap::feedback), 40.0f);
+            set (tapId (2, tap::feedback), 40.0f);
+            set (tapId (0, tap::pan), 0.0f);
         }
 
         beginTest ("Typed values are accepted in range and rejected out of range");

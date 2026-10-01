@@ -10,7 +10,7 @@ namespace astralay::ui
     host sync setting changes.
 
     Keyboard, per the spec: arrows step by a unit-appropriate amount (Shift fine, Ctrl or Cmd
-    coarse), Home and End go to the maximum and minimum, Delete or Backspace resets to the
+    coarse), Home and End go to the maximum and minimum, Delete resets to the
     default, and Enter opens a type-in field.
 */
 class ParameterSlider final : public juce::Slider

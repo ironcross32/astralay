@@ -117,14 +117,17 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
     content.addAndMakeVisible (mainGroup);
     content.addAndMakeVisible (tapGroup);
     content.addAndMakeVisible (globalGroup);
+    content.addAndMakeVisible (performanceGroup);
 
     mainGroup.setExplicitFocusOrder (1);
     tapGroup.setExplicitFocusOrder (2);
     globalGroup.setExplicitFocusOrder (3);
+    performanceGroup.setExplicitFocusOrder (4);
 
     buildMainGroup();
     buildTapGroup();
     buildGlobalGroup();
+    buildPerformanceGroup();
 
     focusOutline = std::make_unique<FocusOutline> (content);
     content.addAndMakeVisible (*focusOutline);
@@ -133,12 +136,17 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
     syncWatcher = std::make_unique<juce::ParameterAttachment> (*state.getParameter (params::global::sync),
                                                                [this] (float v) { setSynced (v >= 0.5f); });
 
+    freezeWatcher = std::make_unique<juce::ParameterAttachment> (*state.getParameter (params::global::freeze),
+                                                                 [this] (float v) { performancePad.setFrozen (v >= 0.5f); });
+    freezeWatcher->sendInitialUpdate();
+
     for (int t = 0; t < params::numTaps; ++t)
     {
         auto* enabled = state.getParameter (params::tapId (t, params::tap::enabled));
         enabledWatchers.push_back (std::make_unique<juce::ParameterAttachment> (*enabled, [this, t] (float value)
         {
             refreshTapName (t, value >= 0.5f);
+            performancePad.setTapEnabled (t, value >= 0.5f);
         }));
     }
 
@@ -160,6 +168,9 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
 
 AstralayEditor::~AstralayEditor()
 {
+    // Ends a held freeze while there is still an editor to end it.
+    performancePad.releaseHeldKeys();
+
     state.state.removeListener (this);
     juce::Desktop::getInstance().removeFocusChangeListener (this);
     setLookAndFeel (nullptr);
@@ -294,6 +305,19 @@ void AstralayEditor::buildGlobalGroup()
     addSliderRow (outputGroup, outputItems, "Output gain", outputGain, nullptr, false);
 }
 
+void AstralayEditor::buildPerformanceGroup()
+{
+    ui::describe (performancePad, "Performance area", ui::helpFor (ui::helpKeys::performance));
+    performancePad.setSelection (processor.getPerformanceSelection());
+
+    performancePad.onSelectionChanged = [this] (juce::uint32 selection) { processor.setPerformanceSelection (selection); };
+    performancePad.onStepTimes = [this] (int direction, bool continuing) { processor.stepSelectedTapTimes (direction, continuing); };
+    performancePad.onHoldFreeze = [this] (bool held) { holdFreeze (held); };
+    performancePad.onToggleFreeze = [this] { toggleAndAnnounce (params::global::freeze, "Freeze"); };
+
+    performanceGroup.addInOrder (performancePad);
+}
+
 //==============================================================================
 void AstralayEditor::bindRow (SliderRow& row)
 {
@@ -383,12 +407,164 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
     const auto command = juce::ModifierKeys::commandModifier;
     const auto shift = juce::ModifierKeys::shiftModifier;
 
-    if (key == juce::KeyPress ('z', command, 0))                                    { undo();           return true; }
-    if (key == juce::KeyPress ('z', command | shift, 0) || key == juce::KeyPress ('y', command, 0)) { redo(); return true; }
-    if (key == juce::KeyPress ('s', command, 0))                                    { showSaveDialog(); return true; }
-    if (key == juce::KeyPress ('o', command, 0))                                    { showLoadMenu();   return true; }
+    if (key == juce::KeyPress ('z', command, 0))         { undo();           return true; }
+    if (key == juce::KeyPress ('z', command | shift, 0)) { redo();           return true; }
+    if (key == juce::KeyPress ('s', command, 0))         { showSaveDialog(); return true; }
+    if (key == juce::KeyPress ('o', command, 0))         { showLoadMenu();   return true; }
+
+    if (key == juce::KeyPress ('y', command, 0))
+    {
+        toggleAndAnnounce (params::global::sync, "Host sync");
+        return true;
+    }
+
+    // The performance area has its own meanings for the remaining keys.
+    if (performancePad.hasKeyboardFocus (true))
+        return false;
+
+    if (groupModifier && (key.getKeyCode() == 'f' || key.getKeyCode() == 'F'))
+    {
+        toggleAndAnnounce (params::global::freeze, "Freeze");
+        return true;
+    }
+
+    if (handleClipboardKey (key))
+        return true;
+
+    if (const auto tap = ui::tapIndexForKey (key); tap >= 0)
+    {
+        switchToTap (tap);
+        return true;
+    }
+
+    if (mods.isCtrlDown() || mods.isAltDown() || mods.isCommandDown())
+        return false;
+
+    const auto code = key.getKeyCode();
+
+    if (code == '-' || code == '_')
+    {
+        switchToTap ((selectedTap + params::numTaps - 1) % params::numTaps);
+        return true;
+    }
+
+    if (code == '=' || code == '+')
+    {
+        switchToTap ((selectedTap + 1) % params::numTaps);
+        return true;
+    }
+
+    if (code == juce::KeyPress::backspaceKey && ! mods.isShiftDown())
+    {
+        toggleSelectedTap();
+        return true;
+    }
 
     return false;
+}
+
+void AstralayEditor::switchToTap (int tapIndex)
+{
+    if (tapIndex == selectedTap)
+        return;
+
+    // The tap selector reads out its own new value, so the number is only announced elsewhere.
+    // It doesn't interrupt, so the focused control's value for the new tap follows it.
+    const auto onSelector = tapSelector.hasKeyboardFocus (true);
+
+    if (! onSelector)
+        announcer.announce ("Tap " + juce::String (tapIndex + 1), false);
+
+    selectTap (tapIndex);
+
+    if (onSelector)
+        if (auto* handler = tapSelector.getAccessibilityHandler())
+            handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+}
+
+void AstralayEditor::toggleSelectedTap()
+{
+    auto* enabled = state.getParameter (params::tapId (selectedTap, params::tap::enabled));
+    const auto on = enabled->getValue() < 0.5f;
+
+    enabled->beginChangeGesture();
+    enabled->setValueNotifyingHost (on ? 1.0f : 0.0f);
+    enabled->endChangeGesture();
+
+    announce ("Tap " + juce::String (selectedTap + 1) + (on ? " on" : " off"));
+}
+
+void AstralayEditor::toggleAndAnnounce (const char* parameterId, const juce::String& name)
+{
+    auto* parameter = state.getParameter (parameterId);
+    const auto on = parameter->getValue() < 0.5f;
+
+    parameter->beginChangeGesture();
+    parameter->setValueNotifyingHost (on ? 1.0f : 0.0f);
+    parameter->endChangeGesture();
+
+    announce (name + (on ? " on" : " off"));
+}
+
+void AstralayEditor::holdFreeze (bool held)
+{
+    // One gesture from press to release, so the host can record it, kept out of the undo history.
+    const astralay::state::History::ScopedSuspend suspend (processor.getHistory());
+    auto* freeze = state.getParameter (params::global::freeze);
+
+    if (held)
+    {
+        freeze->beginChangeGesture();
+        freeze->setValueNotifyingHost (1.0f);
+    }
+    else
+    {
+        freeze->setValueNotifyingHost (0.0f);
+        freeze->endChangeGesture();
+    }
+}
+
+bool AstralayEditor::handleClipboardKey (const juce::KeyPress& key)
+{
+    const auto command = juce::ModifierKeys::commandModifier;
+    const auto copy = key == juce::KeyPress ('c', command, 0);
+    const auto paste = key == juce::KeyPress ('v', command, 0);
+    const auto pasteToAll = key == juce::KeyPress ('v', command | juce::ModifierKeys::shiftModifier, 0);
+
+    if (! (copy || paste || pasteToAll))
+        return false;
+
+    // The tap selector and on/off toggle stand for the whole tap; a slider for its own setting.
+    juce::String suffix, name = "Tap";
+
+    if (! (tapSelector.hasKeyboardFocus (true) || tapEnabled.hasKeyboardFocus (true)))
+    {
+        for (const auto& row : sliderRows)
+            if (row->perTap && row->slider.hasKeyboardFocus (true))
+                suffix = synced && row->syncSuffix.isNotEmpty() ? row->syncSuffix : row->suffix;
+
+        if (suffix.isEmpty())
+            return false;
+
+        name = params::tapParameterName (selectedTap, suffix.toRawUTF8())
+                   .fromFirstOccurrenceOf ("Tap " + juce::String (selectedTap + 1) + " ", false, false);
+    }
+
+    if (copy)
+    {
+        processor.copyTapSettings (selectedTap, suffix);
+        announce (name + " copied");
+    }
+    else if (processor.pasteTapSettings (pasteToAll ? AstralayProcessor::allTaps : selectedTap, suffix))
+    {
+        announce (name + (pasteToAll ? " pasted to all" : " pasted"));
+    }
+    else
+    {
+        announce ("Can't paste");
+    }
+
+    return true;
 }
 
 void AstralayEditor::undo()
@@ -492,7 +668,7 @@ void AstralayEditor::valueTreePropertyChanged (juce::ValueTree&, const juce::Ide
 
 void AstralayEditor::jumpToGroup (int direction)
 {
-    const std::array<juce::Component*, 3> groups { &mainGroup, &tapGroup, &globalGroup };
+    const std::array<juce::Component*, 4> groups { &mainGroup, &tapGroup, &globalGroup, &performanceGroup };
     const auto* focused = juce::Component::getCurrentlyFocusedComponent();
 
     int current = -1;
@@ -551,6 +727,11 @@ void AstralayEditor::resized()
     content.setTransform (juce::AffineTransform::scale ((float) getWidth() / (float) baseWidth));
 
     auto area = juce::Rectangle<int> (0, 0, baseWidth, baseHeight).reduced (10);
+
+    // Performance: a strip along the bottom.
+    performanceGroup.setBounds (area.removeFromBottom (86));
+    performancePad.setBounds (performanceGroup.getContentBounds());
+    area.removeFromBottom (10);
 
     // Main
     mainGroup.setBounds (area.removeFromTop (70));

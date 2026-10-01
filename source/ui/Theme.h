@@ -23,7 +23,7 @@ namespace colours
 namespace sizes
 {
     constexpr int baseWidth = 1200;
-    constexpr int baseHeight = 880;
+    constexpr int baseHeight = 976;
     constexpr float textHeight = 17.0f;
     constexpr float headingHeight = 19.0f;
 }

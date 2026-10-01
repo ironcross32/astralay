@@ -129,7 +129,7 @@ Output:
 
 ### Undo
 
-- Undo covers parameter changes, tap enable/disable, and preset loads. Changing the selected tap is not undoable.
+- Undo covers parameter changes, tap enable/disable, pastes, performance-area time changes, and preset loads. Changing the selected tap, the performance selection and a held freeze are not undoable.
 - One slider gesture is one undo step. A run of edits to the same parameter less than 600 ms apart (such as repeated arrow presses) joins into one step.
 - Only the user's edits are recorded, recognised by their change gestures; host automation never enters the undo history or marks the preset modified.
 - Undoing a preset load restores the previous values, preset name and modified state.
@@ -150,7 +150,7 @@ The window is resizable. The visual style is plain, as the plugin will mostly be
 
 It is imperative to group controls based on their function. This is vital for proper VoiceOver accessibility in macOS, as users will interact with groupings to access the controls inside. Without this, the interface appears disorganized and cluttered. It is also necessary to use JUCE-specific features to set accessibility info so help tags on VoiceOver work. Think of help tags as the screen-reader equivalent of tooltips.
 
-There are three top-level groups, in this order:
+There are four top-level groups, in this order:
 
 1. Main: Undo, Redo, Save, Load, then a read-only label showing the current preset name.
 2. Tap group, named after the selected tap (for example "Tap 3"):
@@ -167,6 +167,7 @@ There are three top-level groups, in this order:
     - Timing: host sync, glide time, freeze
     - Glitch engine: glitch threshold, glitch placement, buffer size, maximum simultaneous glitches, minimum glitch length, maximum glitch length, reproducible randomness, seed
     - Output: smear amount, smear size, mix, output gain
+4. Performance: a single control, the performance area (see below).
 
 Every control in the tap group includes the tap number in its accessible name (for example "Tap 3 Feedback"), so each control identifies itself without relying on announcements.
 
@@ -180,11 +181,26 @@ Keyboard shortcuts, Windows / macOS:
 - Next group: ALT+. / CMD+. (fall back to OPTION only if hosts turn out to swallow CMD)
 - Previous group: ALT+, / CMD+,
 - Undo: CTRL+Z / CMD+Z
-- Redo: CTRL+SHIFT+Z or CTRL+Y / CMD+SHIFT+Z
+- Redo: CTRL+SHIFT+Z / CMD+SHIFT+Z
 - Save: CTRL+S / CMD+S
 - Load: CTRL+O / CMD+O
+- Toggle host sync: CTRL+Y / CMD+Y, announcing "Host sync on" or "Host sync off"
+- Toggle freeze: ALT+F / CMD+F, announcing "Freeze on" or "Freeze off". Not available in the performance area, which has its own freeze keys.
 
-Previous and next group controls don't actually place focus on the group itself, but the first control inside said group. They move between the three top-level groups only, and wrap around, as should using the TAB key. TAB is not constrained by grouping, and navigates the interface in a flat manner.
+Previous and next group controls don't actually place focus on the group itself, but the first control inside said group. They move between the four top-level groups only, and wrap around, as should using the TAB key. TAB is not constrained by grouping, and navigates the interface in a flat manner.
+
+Taps. These work from any control except a type-in field and the performance area, and never move focus:
+- 1 to 9 and 0 switch to taps 1 to 10; SHIFT+1 to SHIFT+6 switch to taps 11 to 16. Keys are matched by position on the number row, so layouts that need SHIFT to type digits are not supported.
+- MINUS and EQUALS switch to the previous and next tap, wrapping in both directions.
+- Switching announces the tap ("Tap 5") without interrupting, so the focused control's value for the new tap is read after it. Nothing is announced when focus is on the tap selector, which reads its own new value. Switching to the tap that is already selected does nothing.
+- BACKSPACE turns the selected tap on or off, announcing "Tap 5 on" or "Tap 5 off".
+
+Copy and paste (CTRL on Windows, CMD on macOS):
+- With focus on the tap selector or the tap's on/off toggle, CTRL+C copies the whole tap except whether it is on, including both the millisecond and synced values. CTRL+V pastes it onto the selected tap and CTRL+SHIFT+V onto all taps; neither changes whether a tap is on. Announced as "Tap copied", "Tap pasted" and "Tap pasted to all".
+- With focus on a per-tap slider, the same keys copy and paste that one setting, announced with its name: "Time copied", "Time pasted", "Time pasted to all". It pastes only onto the same control. While host sync is on, the time and stutter slice controls are the synced ones, so a copied note value does not paste onto the millisecond control.
+- "Can't paste" is announced when nothing has been copied or the copy doesn't match the focused control.
+- On any other control these keys do nothing.
+- A paste is one undo step. The copy belongs to one plugin instance and survives closing the window; it is not saved with the session or in presets, and is not placed on the system clipboard.
 
 Sliders:
 - All controls that increase and decrease a value should be sliders.
@@ -195,6 +211,21 @@ Sliders:
     - Percent: 1%, fine 0.1%, coarse 10%
     - Semitones: 1, fine 0.1, coarse 12
     - Note values: one step through the list; no fine step; coarse jumps between straight values only
-- DELETE (BACKSPACE on macOS) sets the slider to its default value.
+- DELETE sets the slider to its default value. This is the forward delete key (FN+DELETE on Mac laptops), since BACKSPACE turns the selected tap on or off.
 - ENTER presents a type-in field. It accepts plain numbers in the control's own unit, optional unit suffixes (ms, s, Hz, kHz, dB, %, st), "-inf" for volume, and note values such as "1/8", "1/8d", "1/8t", "1/64" and "4 bars". ENTER accepts the value if it is valid and in range. An out-of-range or unrecognised value is rejected: the screen reader announces the valid range (for example "Out of range, 1 ms to 5 s") and the field stays open with the rejected text selected, so the user can either type over it or move into it to fix it. ESC cancels.
 - Announcements (such as type-in errors) go through the user's screen reader. On Windows this uses UI Automation notification events rather than JUCE's default, which speaks through the system voice.
+
+### Performance area
+
+The Performance group holds one canvas-like control named "Performance area", with the help tag "Provides additional functionality for live performance." It is exposed to screen readers as an image, the nearest role to a canvas that both platforms name. While it has focus its keys play the plugin rather than edit it. TAB, SHIFT+TAB, the group keys, undo, redo, save, load and the host sync shortcut still work; tap switching, tap on/off, copy and paste, and ALT+F do not.
+
+It acts on a selection of taps, which is separate from the selected tap and has no effect anywhere else. The selection starts as all taps, survives closing the window, and is not saved with the session or in presets.
+
+- 1 to 0 and SHIFT+1 to SHIFT+6 add a tap to the selection or remove it, announcing "Tap 3 selected" or "Tap 3 unselected".
+- BACKSPACE selects all taps, or none if all are already selected, announcing "All taps" or "No taps".
+- SHIFT+BACKSPACE selects the even-numbered taps, or the odd-numbered ones if exactly the even ones are selected, announcing "Even taps" or "Odd taps".
+- UP and DOWN make the time of every selected tap that is on 10% longer or shorter (multiplying or dividing by 1.1, so the taps keep their ratios). While host sync is on they move each tap by one note value instead. If any of those taps would pass its limit, none of them move. There are no modifiers and nothing is announced. One press is one undo step for all the taps, and the repeats of a held key join into that step.
+- F freezes while it is held and releases when it is let go or focus leaves. If freeze was already on, releasing F turns it off. It is not announced and adds no undo step, but is sent to the host as one gesture so it can be recorded as automation.
+- SHIFT+F switches freeze on or off, announcing "Freeze on" or "Freeze off".
+
+Visually it is a row of 16 numbered cells, filled when selected and dimmed when the tap is off, with a freeze indicator beside them. Clicking a cell adds or removes that tap.

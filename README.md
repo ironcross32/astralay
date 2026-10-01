@@ -22,7 +22,7 @@ Astralay is a multi-tap delay and glitch generator, built to be fully usable wit
 
 ## Usage
 
-Controls are arranged in three groups: Main, Tap *number*, and global. Main houses things like undo and redo, and preset management. The Tap *number* group contains a tap selector, as well as every control for the selected tap. The group is renamed so that *number* represents what tap you're working with. For example, "Tap 3". Everything that affects the sound as a whole lives in global.
+Controls are arranged in four groups: Main, Tap *number*, Global, and Performance. Main houses things like undo and redo, and preset management. The Tap *number* group contains a tap selector, as well as every control for the selected tap. The group is renamed so that *number* represents what tap you're working with. For example, "Tap 3". Everything that affects the sound as a whole lives in global.
 
 ### Keyboard shortcuts
 
@@ -37,14 +37,43 @@ Controls are arranged in three groups: Main, Tap *number*, and global. Main hous
 | Coarse adjustment | Ctrl+Arrow keys | Cmd+Arrow keys |
 | Slider to maximum | Home | Home |
 | Slider to minimum | End | End |
-| Reset slider to default | Delete | Delete (Backspace) |
+| Reset slider to default | Delete | Forward delete (Fn+Delete) |
 | Type a value | Enter | Return |
 | Accept a typed value | Enter | Return |
 | Cancel typing a value | Escape | Escape |
 | Undo | Ctrl+Z | Cmd+Z |
-| Redo | Ctrl+Shift+Z or Ctrl+Y | Cmd+Shift+Z or Cmd+Y |
+| Redo | Ctrl+Shift+Z | Cmd+Shift+Z |
 | Save a preset | Ctrl+S | Cmd+S |
 | Load a preset | Ctrl+O | Cmd+O |
+| Toggle host sync | Ctrl+Y | Cmd+Y |
+| Toggle freeze | Alt+F | Cmd+F |
+| Switch to tap 1 to 10 | 1 to 9, then 0 | 1 to 9, then 0 |
+| Switch to tap 11 to 16 | Shift+1 to Shift+6 | Shift+1 to Shift+6 |
+| Previous or next tap | Minus or Equals | Minus or Equals |
+| Turn the selected tap on or off | Backspace | Delete (Backspace) |
+| Copy a tap or one of its settings | Ctrl+C | Cmd+C |
+| Paste | Ctrl+V | Cmd+V |
+| Paste to all taps | Ctrl+Shift+V | Cmd+Shift+V |
+
+The tap keys work from any control and leave focus where it is, so you can stay on one control, such as Time, and step through the taps to set each one.
+
+Copy and paste act on the whole tap when focus is on the tap selector or the tap's on/off toggle, and on a single setting when focus is on that setting's slider. Whether a tap is on is never copied.
+
+### Performance area
+
+The Performance group holds a single control, the performance area. While it has focus, the keys below replace the tap keys, copy and paste, and Alt+F. They act on a selection of taps that starts as all of them and is separate from the selected tap.
+
+| Action | Key |
+| --- | --- |
+| Add or remove tap 1 to 10 | 1 to 9, then 0 |
+| Add or remove tap 11 to 16 | Shift+1 to Shift+6 |
+| Select all taps, or none | Backspace |
+| Select the even taps, or the odd ones | Shift+Backspace |
+| Make the selected taps' times 10% longer or shorter | Up or Down arrow |
+| Freeze while held | F |
+| Switch freeze on or off | Shift+F |
+
+The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move. The arrows and the held freeze are not announced.
 
 ## Presets
 

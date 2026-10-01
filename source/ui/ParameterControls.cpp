@@ -213,7 +213,8 @@ bool ParameterSlider::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
-    if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey)
+    // Not Backspace, which the editor uses to turn the selected tap on or off.
+    if (code == juce::KeyPress::deleteKey)
     {
         setFromUser (parameter->convertFrom0to1 (parameter->getDefaultValue()));
         return true;

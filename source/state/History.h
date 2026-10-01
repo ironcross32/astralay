@@ -40,8 +40,22 @@ public:
 
     Snapshot capture (const juce::String& presetName, bool modified) const;
 
-    /** Applies a snapshot and records it as one undoable step named description. */
-    void applyAndRecord (const Snapshot& before, const Snapshot& after, const juce::String& description);
+    /** Applies a snapshot and records it as one undoable step named description. With
+        mergeWithPrevious, it joins the previous step instead if that was also recorded here and
+        nothing has happened since, as for a held key.
+    */
+    void applyAndRecord (const Snapshot& before, const Snapshot& after, const juce::String& description,
+                         bool mergeWithPrevious = false);
+
+    /** While one of these exists, gestures aren't recorded, for changes that shouldn't be undoable. */
+    class ScopedSuspend final
+    {
+    public:
+        explicit ScopedSuspend (History& history) : setter (history.applying, true) {}
+
+    private:
+        juce::ScopedValueSetter<bool> setter;
+    };
 
     bool canUndo() const { return undoManager.canUndo(); }
     bool canRedo() const { return undoManager.canRedo(); }
@@ -50,7 +64,7 @@ public:
     juce::String undo();
     juce::String redo();
 
-    void clear() { undoManager.clearUndoHistory(); }
+    void clear();
 
     /** The maximum gap between edits of one parameter that still merge into a single step. */
     static constexpr juce::uint32 mergeWindowMs = 600;
@@ -75,6 +89,7 @@ private:
     int lastParameter = -1;
     juce::uint32 lastEditTime = 0;
     bool applying = false;
+    bool snapshotStepOpen = false;
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (History)
     JUCE_DECLARE_NON_COPYABLE (History)

@@ -92,6 +92,9 @@ juce::String helpFor (const juce::String& key)
         { global::smearSize,   "The size of the smear, higher values exaggerate the effect." },
         { global::mix,         "The balance between the dry input and the repeats. 0% is dry only, 100% is repeats only." },
         { global::outputGain,  "The overall output level." },
+
+        // Performance
+        { helpKeys::performance, "Provides additional functionality for live performance." },
     };
 
     const auto it = text.find (key);

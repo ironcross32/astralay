@@ -66,6 +66,15 @@ public:
 
     int getSizeInUnits() override { return (int) (before.values.size() + after.values.size()); }
 
+    /** Merges a following snapshot in the same step into one change. */
+    juce::UndoableAction* createCoalescedAction (juce::UndoableAction* next) override
+    {
+        if (auto* change = dynamic_cast<SnapshotChange*> (next))
+            return new SnapshotChange (history, before, change->after);
+
+        return nullptr;
+    }
+
 private:
     History& history;
     Snapshot before, after;
@@ -150,6 +159,7 @@ void History::gestureEnded (int parameterIndex, float before, float after)
 
     lastParameter = parameterIndex;
     lastEditTime = now;
+    snapshotStepOpen = false;
 
     if (onUserEdit != nullptr)
         onUserEdit();
@@ -168,11 +178,22 @@ History::Snapshot History::capture (const juce::String& presetName, bool modifie
     return snapshot;
 }
 
-void History::applyAndRecord (const Snapshot& before, const Snapshot& after, const juce::String& description)
+void History::applyAndRecord (const Snapshot& before, const Snapshot& after, const juce::String& description,
+                              bool mergeWithPrevious)
 {
-    undoManager.beginNewTransaction (textPrefix + description);
+    if (! (mergeWithPrevious && snapshotStepOpen))
+        undoManager.beginNewTransaction (textPrefix + description);
+
     undoManager.perform (new SnapshotChange (*this, before, after));
     lastParameter = -1;
+    snapshotStepOpen = true;
+}
+
+void History::clear()
+{
+    undoManager.clearUndoHistory();
+    lastParameter = -1;
+    snapshotStepOpen = false;
 }
 
 void History::setValue (int parameterIndex, float normalisedValue)
@@ -235,6 +256,7 @@ juce::String History::undo()
         return "Nothing to undo";
 
     lastParameter = -1;
+    snapshotStepOpen = false;
     return announcementFor ("Undo", name);
 }
 
@@ -246,6 +268,7 @@ juce::String History::redo()
         return "Nothing to redo";
 
     lastParameter = -1;
+    snapshotStepOpen = false;
     return announcementFor ("Redo", name);
 }
 

@@ -78,6 +78,7 @@ target_sources(Astralay
         source/ui/Announcer.cpp
         source/ui/HelpText.cpp
         source/ui/ParameterControls.cpp
+        source/ui/PerformancePad.cpp
         source/ui/Theme.cpp)
 
 target_include_directories(Astralay
@@ -139,6 +140,7 @@ if(ASTRALAY_BUILD_TESTS)
             source/ui/Announcer.cpp
             source/ui/HelpText.cpp
             source/ui/ParameterControls.cpp
+            source/ui/PerformancePad.cpp
             source/ui/Theme.cpp)
 
     target_include_directories(AstralayTests

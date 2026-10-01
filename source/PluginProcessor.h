@@ -57,6 +57,43 @@ public:
     juce::String loadPresetFile (const juce::File& file);
     juce::String savePresetFile (const juce::File& file);
 
+    /** Sets parameters, by ID and in normalised form, as one undoable step named description.
+        mergeWithPrevious is as for History::applyAndRecord.
+    */
+    void applyEdit (const std::map<juce::String, float>& values, const juce::String& description,
+                    bool mergeWithPrevious = false);
+
+    static constexpr int allTaps = -1;
+
+    /** Copies one tap's settings: the one with this parameter suffix, or with an empty suffix all
+        of them except whether the tap is on. The copy lasts as long as this instance and isn't
+        saved.
+    */
+    void copyTapSettings (int tapIndex, const juce::String& suffix);
+
+    /** Pastes the copy onto a tap, or onto every tap with allTaps, as one undoable step. suffix
+        says what the paste is aimed at, and must match what was copied. Returns false, changing
+        nothing, if it doesn't or nothing was copied.
+    */
+    bool pasteTapSettings (int tapIndex, const juce::String& suffix);
+
+    /** The taps the performance area acts on, as a bit per tap. All of them to begin with; lasts as
+        long as this instance and isn't saved.
+    */
+    juce::uint32 getPerformanceSelection() const noexcept { return performanceSelection; }
+    void setPerformanceSelection (juce::uint32 selection) noexcept { performanceSelection = selection & allTapsSelected; }
+
+    static constexpr juce::uint32 allTapsSelected = (1u << astralay::params::numTaps) - 1;
+
+    /** The factor one performance step scales a tap's time by. */
+    static constexpr float performanceTimeStep = 1.1f;
+
+    /** Makes the time of every selected tap that is on 10% longer or shorter, keeping their
+        ratios, or moves each by one note value while host sync is on. If any of them would pass
+        its limit, none move. Returns whether they moved.
+    */
+    bool stepSelectedTapTimes (int direction, bool mergeWithPrevious);
+
 private:
     struct TapParameters
     {
@@ -141,6 +178,10 @@ private:
     std::vector<int> stutterNoteIndices;
 
     astralay::dsp::Engine engine;
+
+    juce::String copiedSuffix;
+    std::map<juce::String, float> copiedValues;   // Normalised, by parameter suffix.
+    juce::uint32 performanceSelection = allTapsSelected;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AstralayProcessor)
 };

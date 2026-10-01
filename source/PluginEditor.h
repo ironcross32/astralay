@@ -4,15 +4,19 @@
 #include "ui/AccessibleGroup.h"
 #include "ui/Announcer.h"
 #include "ui/ParameterControls.h"
+#include "ui/PerformancePad.h"
 #include "ui/Theme.h"
 
 class AstralayProcessor;
 
-/** The plugin window: three top-level groups (Main, the selected tap, Global) laid out at a fixed
-    base size and scaled with the window.
+/** The plugin window: four top-level groups (Main, the selected tap, Global, Performance) laid out
+    at a fixed base size and scaled with the window.
 
     Keyboard: Tab moves through every control in order and wraps; Alt+period and Alt+comma
-    (Cmd on macOS) jump to the first control of the next or previous group.
+    (Cmd on macOS) jump to the first control of the next or previous group. Outside the
+    performance area, the number keys, minus and equals switch taps without moving focus,
+    Backspace turns the selected tap on or off, and Ctrl+C and Ctrl+V copy and paste a tap or one
+    of its settings.
 */
 class AstralayEditor final : public juce::AudioProcessorEditor,
                              public astralay::ui::AnnouncementTarget,
@@ -67,9 +71,23 @@ private:
     void buildMainGroup();
     void buildTapGroup();
     void buildGlobalGroup();
+    void buildPerformanceGroup();
 
     void bindRow (SliderRow& row);
     void selectTap (int tapIndex);
+
+    /** Selects a tap from the keyboard, announcing its number. Does nothing if it is selected. */
+    void switchToTap (int tapIndex);
+    void toggleSelectedTap();
+
+    /** Switches a bool parameter as an undoable edit and announces "<name> on" or "<name> off". */
+    void toggleAndAnnounce (const char* parameterId, const juce::String& name);
+    void holdFreeze (bool held);
+
+    /** Handles copy and paste for the focused control. Returns false if the key isn't one of
+        those or focus isn't on the tap selector, the tap's on/off toggle or a per-tap slider.
+    */
+    bool handleClipboardKey (const juce::KeyPress& key);
     void setSynced (bool shouldBeSynced);
     void refreshTapName (int tapIndex, bool on);
     void refreshPresetName();
@@ -94,7 +112,8 @@ private:
     astralay::ui::LookAndFeel lookAndFeel;
     juce::Component content;
 
-    astralay::ui::AccessibleGroup mainGroup { "Main" }, tapGroup { "Tap 1" }, globalGroup { "Global" };
+    astralay::ui::AccessibleGroup mainGroup { "Main" }, tapGroup { "Tap 1" }, globalGroup { "Global" },
+                                  performanceGroup { "Performance" };
 
     // Main
     juce::TextButton undoButton { "Undo" }, redoButton { "Redo" }, saveButton { "Save" }, loadButton { "Load" };
@@ -115,6 +134,9 @@ private:
     juce::Label placementLabel;
     astralay::ui::ParameterChoice placementChoice;
 
+    // Performance
+    astralay::ui::PerformancePad performancePad;
+
     std::vector<std::unique_ptr<SliderRow>> sliderRows;
     std::unique_ptr<FocusOutline> focusOutline;
     juce::TooltipWindow tooltipWindow { this, 700 };
@@ -123,7 +145,7 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     static constexpr int fromFileItemId = 10000;
 
-    std::unique_ptr<juce::ParameterAttachment> syncWatcher;
+    std::unique_ptr<juce::ParameterAttachment> syncWatcher, freezeWatcher;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> enabledWatchers;
 
     int selectedTap = 0;

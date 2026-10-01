@@ -9,6 +9,7 @@ namespace
     const juce::Identifier selectedTapProperty { "selectedTap" };
     const juce::Identifier presetNameProperty { "presetName" };
     const juce::Identifier presetModifiedProperty { "presetModified" };
+    const juce::Identifier outputClipProperty { "outputClip" };
 }
 
 AstralayProcessor::AstralayProcessor()
@@ -58,6 +59,9 @@ AstralayProcessor::AstralayProcessor()
         p.grainDensityMax = get (tapId (t, tap::grainDensMax));
         p.pitchMin        = get (tapId (t, tap::pitchMin));
         p.pitchMax        = get (tapId (t, tap::pitchMax));
+        p.pitchSpeedMin   = get (tapId (t, tap::pitchSpeedMin));
+        p.pitchSpeedMax   = get (tapId (t, tap::pitchSpeedMax));
+        p.pitchMode       = get (tapId (t, tap::pitchMode));
         p.lpcMin          = get (tapId (t, tap::lpcMin));
         p.lpcMax          = get (tapId (t, tap::lpcMax));
         p.cepstralMin     = get (tapId (t, tap::cepsMin));
@@ -107,6 +111,13 @@ AstralayProcessor::AstralayProcessor()
     {
         setPresetInfo (snapshot.presetName, snapshot.modified);
     };
+
+   #if ASTRALAY_DIAGNOSTICS
+    diagnosticLog = astralay::state::DiagnosticLog::createIfRequested (*this);
+
+    if (diagnosticLog != nullptr)
+        engine.setDiagnostics (&diagnosticLog->getSink());
+   #endif
 }
 
 juce::String AstralayProcessor::getPresetName() const
@@ -331,6 +342,7 @@ void AstralayProcessor::updateEngineSettings()
     g.freeze = load (globalParameters.freeze) >= 0.5f;
     g.mix = load (globalParameters.mix) / 100.0f;
     g.outputGain = juce::Decibels::decibelsToGain (load (globalParameters.outputGain));
+    g.clipCeiling = params::outputClipCeiling (outputClip.load());
     g.smearAmount = load (globalParameters.smearAmount) / 100.0f;
     g.smearSeconds = load (globalParameters.smearSize) / 1000.0f;
     g.glitch.threshold = load (globalParameters.threshold) / 100.0f;
@@ -390,6 +402,8 @@ void AstralayProcessor::updateEngineSettings()
         glitch.grainSize = { msToSamples (load (p.grainSizeMin)), msToSamples (load (p.grainSizeMax)) };
         glitch.grainDensity = range (p.grainDensityMin, p.grainDensityMax);
         glitch.pitch = range (p.pitchMin, p.pitchMax);
+        glitch.pitchSpeed = range (p.pitchSpeedMin, p.pitchSpeedMax);
+        glitch.varispeed = (int) load (p.pitchMode) == (int) params::PitchMode::varispeed;
         glitch.lpcShift = range (p.lpcMin, p.lpcMax);
         glitch.cepstralShift = range (p.cepstralMin, p.cepstralMax);
         glitch.ringFrequency = range (p.ringMin, p.ringMax);
@@ -436,6 +450,7 @@ void AstralayProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto copy = state.copyState();
     copy.setProperty ("version", stateVersion, nullptr);
+    copy.setProperty (outputClipProperty, (int) outputClip.load(), nullptr);
 
     if (const auto xml = copy.createXml())
         copyXmlToBinary (*xml, destData);
@@ -455,6 +470,10 @@ void AstralayProcessor::setStateInformation (const void* data, int sizeInBytes)
             ranged->setValueNotifyingHost (ranged->getDefaultValue());
 
     state.replaceState (juce::ValueTree::fromXml (*xml));
+
+    // Sessions saved before the output clip existed get its default.
+    const auto clip = (int) state.state.getProperty (outputClipProperty, (int) astralay::params::OutputClip::plus18);
+    outputClip.store ((astralay::params::OutputClip) juce::jlimit (0, (int) astralay::params::OutputClip::off, clip));
 
     // The undo history belongs to the settings that were just replaced.
     history.clear();

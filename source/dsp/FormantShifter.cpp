@@ -113,6 +113,7 @@ void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
 
     // Replace the envelope with a copy stretched by the ratio: the formant at bin k moves to k * ratio.
     const auto last = bins - 1;
+    auto powerBefore = 0.0f, powerAfter = 0.0f;
 
     for (int k = 0; k < bins; ++k)
     {
@@ -123,13 +124,21 @@ void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
                                            : envelope[(size_t) index] + (envelope[(size_t) index + 1] - envelope[(size_t) index]) * fraction;
 
         const auto gain = juce::jlimit (minEnvelopeGain, maxEnvelopeGain, shifted / (envelope[(size_t) k] + tiny));
+        const auto power = magnitude[(size_t) k] * magnitude[(size_t) k];
+        powerBefore += power;
+        powerAfter += power * gain * gain;
+
         spectrum[(size_t) (2 * k)] *= gain;
         spectrum[(size_t) (2 * k + 1)] *= gain;
     }
 
     fft->inverse (spectrum.data(), spectrum.data());
 
-    const auto scale = overlapScale;
+    // The frame keeps the level it came in with. Most sound falls away towards the top, so moving
+    // its formants up raises every band a little and moving them down lowers every band. Heard
+    // once that hardly shows, but in a feedback loop it happens on every pass, and a frozen tap
+    // climbs until it clips or fades to nothing.
+    const auto scale = overlapScale * std::sqrt ((powerBefore + tiny) / (powerAfter + tiny));
 
     for (int i = 0; i < frameSize; ++i)
     {

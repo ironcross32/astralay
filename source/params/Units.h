@@ -17,6 +17,7 @@ enum class Unit
     pan,            // -100 (left) to 100 (right).
     hertz,
     semitones,
+    semitonesPerPass,   // How fast a pitch sweep moves; never negative, so shown without a sign.
     ratio,
     index,
     multiplier,     // Sample-rate reduction, shown as "8.0x".

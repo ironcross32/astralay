@@ -17,7 +17,7 @@ Astralay is a multi-tap delay and glitch generator, built to be fully usable wit
     - bit crusher
 - A shared glitch grid, which can follow the host's tempo, with a global threshold, glitch lengths, and a limit on how many glitches run at once.
 - Reproducible randomness: with a seed, every play-through glitches identically.
-- Host sync, tape-style glide when times change, freeze, smear (diffusion), dry/wet mix and output gain.
+- Host sync, tape-style glide when times change, freeze, smear (diffusion), dry/wet mix, output gain and an output clip.
 - Presets, factory presets, and undo and redo.
 
 ## Usage
@@ -54,10 +54,22 @@ Controls are arranged in four groups: Main, Tap *number*, Global, and Performanc
 | Copy a tap or one of its settings | Ctrl+C | Cmd+C |
 | Paste | Ctrl+V | Cmd+V |
 | Paste to all taps | Ctrl+Shift+V | Cmd+Shift+V |
+| Open a control's context menu | Right bracket | Right bracket, or VO+Shift+M |
 
 The tap keys work from any control and leave focus where it is, so you can stay on one control, such as Time, and step through the taps to set each one.
 
 Copy and paste act on the whole tap when focus is on the tap selector or the tap's on/off toggle, and on a single setting when focus is on that setting's slider. Whether a tap is on is never copied.
+
+### Pitch glitch modes
+
+The pitch glitch has two modes, chosen for each tap from the context menu on its Pitch probability control.
+
+- **Sweep** shifts the audio on every pass through the tap, so with feedback, and most of all while frozen, the pitch keeps moving for as long as the glitch lasts. Min speed and Max speed set how far each pass moves it. Minimum and Maximum are the limits: a sweep that reaches one turns back, and sweeps then tend to head for the middle of the range until the pitch is back there. Sweeps wear a frozen loop down over time; lower the probability or the speed, or narrow the range, to slow that.
+- **Varispeed** changes the tap's time instead, like changing a tape's speed. The pitch bends while the time glides to its new value, at the Glide time, and bends back when the glitch ends. Minimum and Maximum set the speed change; the speed controls aren't used.
+
+### Output clipping
+
+The output is hard clipped at +18 dBFS, so that glitches piling up in a frozen loop can't get loud enough for the host to mute the track. To clip at 0 dBFS instead, or to turn clipping off, open the context menu on Output gain. The setting is saved with your project, but it can't be automated and loading a preset doesn't change it.
 
 ### Performance area
 
@@ -152,6 +164,19 @@ Every release must also pass [pluginval](https://github.com/Tracktion/pluginval)
 ```
 pluginval --strictness-level 10 --validate "build/Astralay_artefacts/Release/VST3/Astralay.vst3"
 ```
+
+## Diagnostic logging
+
+To track down a problem you can hear, Astralay can write a log of what it is doing: every parameter's value and each change to it, each glitch as it fires with the values it picked and the ranges set for them, and, every 50 ms, the freeze amount and signal levels of each sounding tap and of the output.
+
+Logging is compiled into Debug builds. To add it to the other configurations too, which is useful when a Debug build is too slow to reproduce the problem, configure with `-DASTRALAY_DIAGNOSTICS=ON`:
+
+```
+cmake -S . -B build -DASTRALAY_DIAGNOSTICS=ON
+cmake --build build --config Release --parallel
+```
+
+Even then nothing is written until the `ASTRALAY_LOG` environment variable is set to any value before the host starts. Each instance of the plugin then writes its own file to `Documents/Astralay/Logs`, named with the date and time. The top of each file explains its lines. Logs grow by several megabytes a minute while audio is playing, so unset the variable when you're done.
 
 ## Licence
 

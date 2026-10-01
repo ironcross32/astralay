@@ -15,7 +15,7 @@ void Tap::prepare (double newSampleRate, int maxDelaySamples)
 {
     sampleRate = newSampleRate;
     line.prepare (maxDelaySamples);
-    glitches.prepare (sampleRate);
+    glitches.prepare (sampleRate, (double) maxDelaySamples / sampleRate);
 
     const juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
 
@@ -57,7 +57,9 @@ void Tap::setSettings (const TapSettings& s, float glideSeconds, const GlitchGlo
     glitches.setSettings (s.glitch, glitchGlobal);
     glitchesHeard = glitchGlobal.outputAndFeedback;
 
-    const auto target = juce::jlimit (DelayLine::minDelaySamples, line.getMaxDelay(), s.delaySamples);
+    baseDelay = s.delaySamples;
+
+    const auto target = scaledDelay();
     const auto wasIdle = idle;
 
     if (s.enabled != enabled)
@@ -102,8 +104,28 @@ void Tap::setSettings (const TapSettings& s, float glideSeconds, const GlitchGlo
 
 void Tap::process (float input, float freeze, float& left, float& right) noexcept
 {
+    // A varispeed pitch glitch changes the delay time, and the glide to it bends the pitch.
+    if (const auto scale = glitches.getDelayScale(); ! juce::exactlyEqual (scale, delayScale))
+    {
+        delayScale = scale;
+        delay.setTargetValue (scaledDelay());
+    }
+
     const auto fade = enabledGain.getNextValue();
-    const auto delayed = line.read (delay.getNextValue());
+    const auto fb = feedback.getNextValue();
+    const auto loopGain = loopGainFor (fb, freeze);
+
+    // A loop that keeps everything settles on a whole number of samples, which the delay line
+    // reads back untouched. Between samples it has to interpolate, and even a good interpolator
+    // takes a little off the top on each of the many passes such a loop makes.
+    auto delaySamples = delay.getNextValue();
+
+    if (loopGain > 0.999f && ! delay.isSmoothing())
+        delaySamples = std::round (delaySamples);
+
+    const auto delayed = line.read (delaySamples);
+
+    glitches.setLoop (delaySamples, loopGain);
     const auto glitched = glitches.process (delayed);
 
     // Output.
@@ -111,13 +133,15 @@ void Tap::process (float input, float freeze, float& left, float& right) noexcep
     left  += out * leftGain.getNextValue();
     right += out * rightGain.getNextValue();
 
-    // Feedback path. Freeze raises the feedback to unity and crossfades the filters and clipper out.
-    const auto fb = feedback.getNextValue();
-    const auto looped = glitched * (fb + (1.0f - fb) * freeze);
+    // Feedback path. Freeze crossfades the filters and clipper out.
+    const auto looped = glitched * loopGain;
     const auto shaped = softClip (highCut.processSample (0, lowCut.processSample (0, looped)));
     const auto returned = shaped + (looped - shaped) * freeze;
 
-    line.push ((input * (1.0f - freeze) + returned) * fade);
+    const auto written = (input * (1.0f - freeze) + returned) * fade;
+
+    line.push (written);
+    glitches.getProbe().sample (freeze, delaySamples, fb, delayed, glitched, written);
 }
 
 void Tap::endBlock() noexcept

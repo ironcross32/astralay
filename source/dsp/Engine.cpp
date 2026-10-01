@@ -24,8 +24,18 @@ void Engine::prepare (double newSampleRate, int, double maxDelaySeconds)
     for (auto* s : { &dryGain, &wetGain, &outputGain })
         s->reset (sampleRate, gainRampSeconds);
 
+    setDiagnostics (diagnosticSink);
     reset();
     restartRandomness (global.reproducible ? global.seed : juce::Random::getSystemRandom().nextInt64());
+}
+
+void Engine::setDiagnostics (diagnostics::Sink* sink)
+{
+    diagnosticSink = sink;
+    outputProbe.attach (sink, sampleRate);
+
+    for (size_t t = 0; t < taps.size(); ++t)
+        taps[t].setDiagnostics (sink, (int) t);
 }
 
 void Engine::restartRandomness (juce::int64 baseSeed)
@@ -89,6 +99,7 @@ void Engine::setTapSettings (int tapIndex, const TapSettings& settings)
 void Engine::process (const float* inLeft, const float* inRight, float* outLeft, float* outRight, int numSamples) noexcept
 {
     const auto chunk = juce::jmax (1, global.glitch.chunkSamples);
+    const auto ceiling = global.clipCeiling;
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -96,7 +107,7 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
         {
             for (auto& tap : taps)
                 if (! tap.isIdle())
-                    tap.onChunkBoundary();
+                    tap.onChunkBoundary (freeze.getCurrentValue());
 
             samplesToChunk = chunk;
         }
@@ -123,6 +134,13 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
 
         outLeft[i]  = (dryLeft * dry + wetLeft * wet) * out;
         outRight[i] = (dryRight * dry + wetRight * wet) * out;
+        outputProbe.sample (outLeft[i], outRight[i], ceiling, frozen, out);
+
+        if (ceiling > 0.0f)
+        {
+            outLeft[i]  = juce::jlimit (-ceiling, ceiling, outLeft[i]);
+            outRight[i] = juce::jlimit (-ceiling, ceiling, outRight[i]);
+        }
     }
 
     for (auto& tap : taps)

@@ -51,7 +51,9 @@ struct TapGlitchSettings
     RandomRange stutterSlice { 960.0f, 5760.0f };         // Samples.
     RandomRange grainSize { 960.0f, 3840.0f };            // Samples.
     RandomRange grainDensity { 10.0f, 40.0f };            // Grains per second.
-    RandomRange pitch { -12.0f, 12.0f };                  // Semitones.
+    RandomRange pitch { -12.0f, 12.0f };                  // Semitones: where a sweep turns back, or varispeed's speed change.
+    RandomRange pitchSpeed { 0.0f, 12.0f };               // Semitones a sweep moves on each pass through the tap.
+    bool varispeed = false;                               // Otherwise the pitch glitch sweeps.
     RandomRange lpcShift { -5.0f, 5.0f };                 // Semitones.
     RandomRange cepstralShift { -5.0f, 5.0f };            // Semitones.
     RandomRange ringFrequency { 30.0f, 800.0f };          // Hz.

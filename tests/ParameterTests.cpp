@@ -1,4 +1,4 @@
-﻿#include <set>
+#include <set>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "params/NoteValues.h"
 #include "params/Parameters.h"
@@ -118,7 +118,7 @@ public:
             LayoutHost host;
             const auto& parameters = host.getParameters();
 
-            constexpr int perTap = 41;
+            constexpr int perTap = 44;
             constexpr int global = 16;
             expectEquals (parameters.size(), params::numTaps * perTap + global);
 
@@ -161,6 +161,13 @@ public:
             expectWithinAbsoluteError (value (params::global::smearSize), 200.0f, 1.0e-3f);
             expectEquals (choice (params::global::bufferSync), juce::String ("1/16"));
             expectEquals (choice (params::global::placement), juce::String ("Feedback path"));
+
+            // The +18 dBFS ceiling sits just under it; 0 dBFS is exact; off doesn't clip.
+            const auto plus18 = juce::Decibels::decibelsToGain (18.0f);
+            const auto ceiling = params::outputClipCeiling (params::OutputClip::plus18);
+            expect (ceiling < plus18 && ceiling > plus18 * 0.999f);
+            expectEquals (params::outputClipCeiling (params::OutputClip::zero), 1.0f);
+            expectEquals (params::outputClipCeiling (params::OutputClip::off), 0.0f);
         }
     }
 };

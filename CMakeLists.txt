@@ -68,11 +68,19 @@ set(ASTRALAY_CORE_SOURCES
     source/params/Units.cpp
     source/ui/Steps.cpp)
 
+# Diagnostic logging is always compiled into Debug builds. This option adds it to the other
+# configurations too, for when a Debug build is too slow to reproduce a problem. Either way it
+# stays off until the ASTRALAY_LOG environment variable is set.
+option(ASTRALAY_DIAGNOSTICS "Compile diagnostic logging into every configuration, not just Debug" OFF)
+set(ASTRALAY_DIAGNOSTICS_DEFINITION
+    "ASTRALAY_DIAGNOSTICS=$<IF:$<OR:$<CONFIG:Debug>,$<BOOL:${ASTRALAY_DIAGNOSTICS}>>,1,0>")
+
 target_sources(Astralay
     PRIVATE
         ${ASTRALAY_CORE_SOURCES}
         source/PluginProcessor.cpp
         source/PluginEditor.cpp
+        source/state/DiagnosticLog.cpp
         source/state/History.cpp
         source/state/Presets.cpp
         source/ui/Announcer.cpp
@@ -89,7 +97,8 @@ target_compile_definitions(Astralay
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        ${ASTRALAY_DIAGNOSTICS_DEFINITION})
 
 target_link_libraries(Astralay
     PRIVATE
@@ -133,8 +142,10 @@ if(ASTRALAY_BUILD_TESTS)
             tests/SmearTests.cpp
             tests/StateTests.cpp
             tests/Benchmark.cpp
+            tests/DiagnosticsTests.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp
+            source/state/DiagnosticLog.cpp
             source/state/History.cpp
             source/state/Presets.cpp
             source/ui/Announcer.cpp
@@ -151,7 +162,8 @@ if(ASTRALAY_BUILD_TESTS)
         PRIVATE
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0
-            JucePlugin_Name="Astralay")
+            JucePlugin_Name="Astralay"
+            ${ASTRALAY_DIAGNOSTICS_DEFINITION})
 
     target_link_libraries(AstralayTests
         PRIVATE

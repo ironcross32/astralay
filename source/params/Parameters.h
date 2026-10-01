@@ -40,6 +40,9 @@ namespace tap
     inline constexpr auto pitchProb = "pitch_prob";
     inline constexpr auto pitchMin  = "pitch_min";
     inline constexpr auto pitchMax  = "pitch_max";
+    inline constexpr auto pitchSpeedMin = "pitch_speedMin";
+    inline constexpr auto pitchSpeedMax = "pitch_speedMax";
+    inline constexpr auto pitchMode = "pitch_mode";
 
     inline constexpr auto lpcProb = "lpc_prob";
     inline constexpr auto lpcMin  = "lpc_min";
@@ -109,6 +112,26 @@ enum class GlitchPlacement
     feedbackPath = 0,   // Only on the signal fed back into the delay line; unheard at 0% feedback.
     outputAndFeedback   // On the delayed signal before it splits to the output and the feedback.
 };
+
+/** What a tap's pitch glitch does, as indices of its pitch mode parameter. */
+enum class PitchMode
+{
+    sweep = 0,   // Shifts the audio on every pass, turning back at the ends of the pitch range.
+    varispeed    // Changes the tap's delay time, bending the pitch as a tape's speed change would.
+};
+
+/** Where the output is hard clipped. Not a parameter: it is saved with the session (as these
+    numbers) but can't be automated and isn't part of a preset.
+*/
+enum class OutputClip
+{
+    plus18 = 0,   // At +18 dBFS, where hosts such as Reaper mute a track.
+    zero,         // At 0 dBFS.
+    off
+};
+
+/** The linear level an output clip setting clips at, or 0 for no clipping. */
+float outputClipCeiling (OutputClip clip) noexcept;
 
 /** Stutter's synced slice choices are a subset of the note values: 1/64 up to 1/4. */
 juce::StringArray stutterSyncChoices();

@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "dsp/Engine.h"
 #include "params/Parameters.h"
+#include "state/DiagnosticLog.h"
 #include "state/History.h"
 
 class AstralayProcessor final : public juce::AudioProcessor
@@ -43,6 +44,12 @@ public:
     /** The tap shown in the editor (zero-based). Saved with the session but not a host parameter. */
     int getSelectedTap() const;
     void setSelectedTap (int tapIndex);
+
+    /** Where the output is hard clipped. Saved with the session but not a host parameter, not part
+        of a preset and not undoable.
+    */
+    astralay::params::OutputClip getOutputClip() const noexcept { return outputClip.load(); }
+    void setOutputClip (astralay::params::OutputClip clip) noexcept { outputClip.store (clip); }
 
     astralay::state::History& getHistory() noexcept { return history; }
 
@@ -117,6 +124,9 @@ private:
         std::atomic<float>* grainDensityMax = nullptr;
         std::atomic<float>* pitchMin = nullptr;
         std::atomic<float>* pitchMax = nullptr;
+        std::atomic<float>* pitchSpeedMin = nullptr;
+        std::atomic<float>* pitchSpeedMax = nullptr;
+        std::atomic<float>* pitchMode = nullptr;
         std::atomic<float>* lpcMin = nullptr;
         std::atomic<float>* lpcMax = nullptr;
         std::atomic<float>* cepstralMin = nullptr;
@@ -178,10 +188,16 @@ private:
     std::vector<int> stutterNoteIndices;
 
     astralay::dsp::Engine engine;
+    std::atomic<astralay::params::OutputClip> outputClip { astralay::params::OutputClip::plus18 };
 
     juce::String copiedSuffix;
     std::map<juce::String, float> copiedValues;   // Normalised, by parameter suffix.
     juce::uint32 performanceSelection = allTapsSelected;
+
+   #if ASTRALAY_DIAGNOSTICS
+    // Last, so its thread stops before anything it reads is destroyed.
+    std::unique_ptr<astralay::state::DiagnosticLog> diagnosticLog;
+   #endif
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AstralayProcessor)
 };

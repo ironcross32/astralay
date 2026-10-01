@@ -11,6 +11,9 @@ namespace
     constexpr double grainHistorySeconds = 1.0;
     constexpr double grainSpreadSeconds = 0.5;
     constexpr double pitchWindowSeconds = 0.04;
+    constexpr double pitchLevelSeconds = 0.005;
+    constexpr double pitchMeanSeconds = 0.05;
+    constexpr float wallMargin = 0.05f;   // Semitones from a wall at which a sweep counts as there.
     constexpr double fmHistorySeconds = 0.1;
     constexpr double fmMaxDepthSeconds = 0.04;
     constexpr double pitchEstimateSeconds = 0.05;
@@ -33,7 +36,7 @@ namespace
     }
 }
 
-void GlitchChain::prepare (double newSampleRate)
+void GlitchChain::prepare (double newSampleRate, double maxLoopSeconds)
 {
     sampleRate = newSampleRate;
 
@@ -43,7 +46,11 @@ void GlitchChain::prepare (double newSampleRate)
     reverseInput.prepare (2 * reverseCap + 4);
     stutterInput.prepare (samples (sliceCapSeconds));
     grainInput.prepare (samples (grainHistorySeconds));
-    pitchInput.prepare (samples (pitchWindowSeconds) + 4);
+    pitchInput.prepare (samples (2.0 * pitchWindowSeconds) + 4);
+    pitchTrack.prepare (samples (2.0 * pitchWindowSeconds) + 4);
+    loopTrack.assign ((size_t) (samples (maxLoopSeconds) / loopTrackStep + 4), 0.0f);
+    pitchSmoothing = 1.0f - std::exp (-1.0f / (float) (pitchLevelSeconds * sampleRate));
+    pitchMeanSmoothing = 1.0f - std::exp (-1.0f / (float) (pitchMeanSeconds * sampleRate));
     fmInput.prepare (samples (fmHistorySeconds));
 
     slice.assign ((size_t) samples (sliceCapSeconds), 0.0f);
@@ -68,6 +75,40 @@ void GlitchChain::reset()
 
     for (auto& voice : voices)
         voice = {};
+
+    pitchTrack.clear();
+    std::fill (loopTrack.begin(), loopTrack.end(), 0.0f);
+    pitchOffset = pitchArriving = 0.0f;
+    pitchMean = 0.0f;
+    pitchHoming = false;
+}
+
+float GlitchChain::readLoopTrack() const noexcept
+{
+    const auto size = (int) loopTrack.size();
+    const auto back = juce::jmax (1, juce::roundToInt (juce::jmin (loopSamples, 1.0e8f) / (float) loopTrackStep));
+
+    // A loop longer than the track is no loop at all, as when setLoop() was never called.
+    if (back >= size)
+        return 0.0f;
+
+    return loopTrack[(size_t) ((loopTrackIndex - back + size) % size)];
+}
+
+void GlitchChain::writeLoopTrack (float semitones) noexcept
+{
+    if (++loopTrackCount < loopTrackStep)
+        return;
+
+    loopTrackCount = 0;
+    loopTrackIndex = (loopTrackIndex + 1) % (int) loopTrack.size();
+    loopTrack[(size_t) loopTrackIndex] = semitones;
+}
+
+void GlitchChain::setLoop (float newLoopSamples, float newLoopGain) noexcept
+{
+    loopSamples = juce::jlimit (1.0f, 1.0e9f, newLoopSamples);
+    loopGain = juce::jlimit (0.0f, 1.0f, newLoopGain);
 }
 
 void GlitchChain::reseed (juce::int64 seed)
@@ -116,17 +157,23 @@ void GlitchChain::start (GlitchType type)
     slot.length = juce::jmax (1, global.lengthChunks.pickInt (random)) * juce::jmax (1, global.chunkSamples);
     slot.fade = juce::jmin ((int) (fadeSeconds * sampleRate), slot.length / 2);
 
+    // What was picked, for the diagnostic log.
+    diagnostics::Picks picks;
+    using diagnostics::picked;
+
     switch (type)
     {
         case GlitchType::reverse:
             reverseSegment = juce::jlimit (16, reverseCap, global.chunkSamples);
             reversePosition = 0;
+            picks[0].value = picks[0].min = picks[0].max = (float) reverseSegment;
             break;
 
         case GlitchType::stutter:
         {
             sliceLength = juce::jlimit (16, (int) slice.size(), juce::roundToInt (settings.stutterSlice.pick (random)));
             sliceLength = juce::jmin (sliceLength, stutterInput.getCapacity());
+            picks[0] = picked ((float) sliceLength, settings.stutterSlice);
 
             for (int i = 0; i < sliceLength; ++i)
                 slice[(size_t) i] = stutterInput.back (sliceLength - 1 - i);
@@ -152,46 +199,123 @@ void GlitchChain::start (GlitchType type)
             for (auto& voice : voices)
                 voice.active = false;
 
+            picks = { picked ((float) grainSize, settings.grainSize), picked (density, settings.grainDensity) };
             break;
         }
 
         case GlitchType::pitch:
-            pitchRatio = std::pow (2.0f, settings.pitch.pick (random) / 12.0f);
+        {
+            pitchIsVarispeed = settings.varispeed;
+
+            if (pitchIsVarispeed)
+            {
+                // A faster tape is a shorter delay.
+                const auto semitones = settings.pitch.pick (random);
+                varispeedScale = std::pow (2.0f, -semitones / 12.0f);
+                picks[0] = picked (semitones, settings.pitch);
+                break;
+            }
+
+            pitchSpeed = juce::jmax (0.0f, settings.pitchSpeed.pick (random));
+            pitchUpRatio = std::pow (2.0f, pitchSpeed / 12.0f);
+            pitchDownRatio = 1.0f / pitchUpRatio;
+
+            // Which way: back into the range if the pitch is outside it, otherwise either way, with
+            // the odds leaning towards the middle while homing. The lean is strongest at a wall and
+            // gone by the edge of the dead zone round the middle.
+            const auto roll = random.nextFloat();
+            const auto walls = pitchWalls();
+            const auto distance = std::abs (pitchOffset - walls.centre);
+            const auto towardsCentre = pitchOffset > walls.centre ? -1 : 1;
+
+            if (pitchOffset < walls.low || pitchOffset > walls.high)
+            {
+                pitchDirection = towardsCentre;
+            }
+            else
+            {
+                const auto reach = (walls.high - walls.low) * 0.5f - walls.deadZone;
+                const auto lean = pitchHoming && reach > 0.0f ? juce::jlimit (0.0f, 1.0f, (distance - walls.deadZone) / reach) : 0.0f;
+                pitchDirection = roll < 0.5f + 0.4f * lean ? towardsCentre : -towardsCentre;
+            }
+
+            pitchRatio = pitchDirection > 0 ? pitchUpRatio : pitchDownRatio;
             pitchPhase = 0.0f;
+            pitchHeads.reset();
+
+            // A short loop repeats itself. Sweeping a window twice a whole number of loop lengths
+            // puts the two read heads a whole number of repeats apart, on identical audio, so
+            // their crossfade is seamless and loses nothing.
+            pitchSpan = pitchWindow;
+
+            if (loopSamples <= pitchWindow)
+                pitchSpan = 2.0f * loopSamples * juce::jmax (1.0f, std::round (pitchWindow / (2.0f * loopSamples)));
+
+            picks = { picked ((float) pitchDirection * pitchSpeed, settings.pitchSpeed),
+                      diagnostics::Pick { pitchOffset, pitchOffset, pitchOffset } };
             break;
+        }
 
         case GlitchType::ringModulation:
             ringFrequency = settings.ringFrequency.pick (random);
             ringPhase = 0.0f;
+            picks[0] = picked (ringFrequency, settings.ringFrequency);
             break;
 
         case GlitchType::frequencyModulation:
         {
             const auto fundamental = estimateFundamental();
-            fmFrequency = settings.fmRatio.pick (random) * fundamental;
+            const auto ratio = settings.fmRatio.pick (random);
+            fmFrequency = ratio * fundamental;
 
             // A phase deviation of index radians at the fundamental.
-            const auto depthSeconds = settings.fmIndex.pick (random) / (twoPi * fundamental);
+            const auto index = settings.fmIndex.pick (random);
+            const auto depthSeconds = index / (twoPi * fundamental);
             fmDepth = (float) juce::jmin ((double) depthSeconds, fmMaxDepthSeconds) * (float) sampleRate;
             fmCentre = fmDepth + 2.0f;
             fmPhase = 0.0f;
+            picks = { picked (ratio, settings.fmRatio), picked (index, settings.fmIndex) };
             break;
         }
 
         case GlitchType::bitCrusher:
-            crushLevels = std::pow (2.0f, (float) (juce::jlimit (1, 16, settings.bits.pickInt (random)) - 1));
+        {
+            const auto bits = juce::jlimit (1, 16, settings.bits.pickInt (random));
+            crushLevels = std::pow (2.0f, (float) (bits - 1));
             crushRate = juce::jmax (1.0f, settings.rateReduction.pick (random));
             crushCounter = crushRate;
+            picks = { picked ((float) bits, settings.bits), picked (crushRate, settings.rateReduction) };
             break;
+        }
 
         case GlitchType::lpcFormant:
-            lpcShifter.start (settings.lpcShift.pick (random));
+        {
+            const auto semitones = settings.lpcShift.pick (random);
+            lpcShifter.start (semitones);
+            picks[0] = picked (semitones, settings.lpcShift);
             break;
+        }
 
         case GlitchType::cepstralFormant:
-            cepstralShifter.start (settings.cepstralShift.pick (random));
+        {
+            const auto semitones = settings.cepstralShift.pick (random);
+            cepstralShifter.start (semitones);
+            picks[0] = picked (semitones, settings.cepstralShift);
             break;
+        }
     }
+
+    stageEdges[(size_t) type].reset();
+    probe.glitchStarted (type, slot.length, picks, type == GlitchType::pitch && pitchIsVarispeed);
+}
+
+GlitchChain::PitchWalls GlitchChain::pitchWalls() const noexcept
+{
+    const auto low = juce::jmin (settings.pitch.min, settings.pitch.max);
+    const auto high = juce::jmax (settings.pitch.min, settings.pitch.max);
+
+    // The dead zone is the middle fifth of the range.
+    return { low, high, (low + high) * 0.5f, (high - low) * 0.1f };
 }
 
 float GlitchChain::envelope (GlitchType type) noexcept
@@ -207,7 +331,27 @@ float GlitchChain::envelope (GlitchType type) noexcept
 
 float GlitchChain::applyStage (GlitchType type, float dry, float wet) noexcept
 {
-    return dry + (wet - dry) * envelope (type);
+    const auto y = dry + (wet - dry) * envelope (type);
+    probe.stage (type, y);
+    return y;
+}
+
+float GlitchChain::applyPitchStage (float dry, float wet) noexcept
+{
+    const auto gain = envelope (GlitchType::pitch);
+    pitchOffset = pitchArriving + (pitchWetOffset - pitchArriving) * gain;
+
+    const auto y = levelMix (wet, gain, dry, stageEdges[(size_t) GlitchType::pitch]);
+    probe.stage (GlitchType::pitch, y);
+    return y;
+}
+
+float GlitchChain::applyLevelStage (GlitchType type, float dry, float wet) noexcept
+{
+    // As applyStage, but the fades in and out keep their level.
+    const auto y = levelMix (wet, envelope (type), dry, stageEdges[(size_t) type]);
+    probe.stage (type, y);
+    return y;
 }
 
 float GlitchChain::process (float input) noexcept
@@ -226,17 +370,42 @@ float GlitchChain::process (float input) noexcept
     if (isActive (GlitchType::granularize))
         y = applyStage (GlitchType::granularize, y, granularize());
 
+    const auto pitching = isActive (GlitchType::pitch);
+    const auto sweeping = pitching && ! pitchIsVarispeed;
+
+    // The pitch of the audio arriving: what left here one trip round the loop ago, pulled towards
+    // the original pitch by however much new input has been mixed in since.
+    pitchArriving = loopGain * readLoopTrack();
+    pitchOffset = pitchArriving;
+
+    pitchMean += pitchMeanSmoothing * (y - pitchMean);
     pitchInput.push (y);
-    if (isActive (GlitchType::pitch))
-        y = applyStage (GlitchType::pitch, y, pitchShift());
+    pitchTrack.push (pitchArriving);
+
+    if (sweeping)
+    {
+        y = applyPitchStage (y, pitchShift());
+
+        if (const auto walls = pitchWalls(); pitchHoming && std::abs (pitchOffset - walls.centre) <= walls.deadZone)
+            pitchHoming = false;
+    }
+    else if (pitching)
+    {
+        // Varispeed changes nothing here; the tap bends its delay time. This just runs the clock.
+        envelope (GlitchType::pitch);
+        probe.stage (GlitchType::pitch, y);
+    }
+
+    writeLoopTrack (pitchOffset);
+    probe.setPitchOffset (pitchOffset);
 
     lpcShifter.push (y);
     if (isActive (GlitchType::lpcFormant))
-        y = applyStage (GlitchType::lpcFormant, y, lpcShifter.next());
+        y = applyLevelStage (GlitchType::lpcFormant, y, lpcShifter.next());
 
     cepstralShifter.push (y);
     if (isActive (GlitchType::cepstralFormant))
-        y = applyStage (GlitchType::cepstralFormant, y, cepstralShifter.next());
+        y = applyLevelStage (GlitchType::cepstralFormant, y, cepstralShifter.next());
 
     if (isActive (GlitchType::ringModulation))
         y = applyStage (GlitchType::ringModulation, y, ringModulate (y));
@@ -318,11 +487,37 @@ float GlitchChain::pitchShift() noexcept
 {
     // Two read heads sweep through a short window at the pitch ratio, crossfading so that one is
     // always away from the jump back.
-    pitchPhase = wrap (pitchPhase + (1.0f - pitchRatio) / pitchWindow);
+    pitchPhase = wrap (pitchPhase + (1.0f - pitchRatio) / pitchSpan);
     const auto otherPhase = wrap (pitchPhase + 0.5f);
 
-    return pitchInput.read (1.0f + pitchPhase * pitchWindow) * std::sin (pi * pitchPhase)
-         + pitchInput.read (1.0f + otherPhase * pitchWindow) * std::sin (pi * otherPhase);
+    const auto delayA = 1.0f + pitchPhase * pitchSpan;
+    const auto delayB = 1.0f + otherPhase * pitchSpan;
+
+    const auto s = std::sin (pi * pitchPhase);
+    const auto gain = s * s;
+
+    // The pitch of the audio the heads are reading, and how far that is from the wall ahead.
+    const auto reading = pitchTrack.read (delayA) * gain + pitchTrack.read (delayB) * (1.0f - gain);
+    const auto walls = pitchWalls();
+    auto room = pitchDirection > 0 ? walls.high - reading : reading - walls.low;
+
+    if (room <= wallMargin)
+    {
+        // At the wall: turn back, and favour the middle from now on.
+        pitchDirection = -pitchDirection;
+        pitchHoming = true;
+        room = pitchDirection > 0 ? walls.high - reading : reading - walls.low;
+    }
+
+    // The step is cut short where a full one would carry the audio through the wall, so the sweep
+    // lands on the wall, and the next time that audio comes round it turns back.
+    const auto step = juce::jlimit (0.0f, pitchSpeed, room);
+
+    pitchRatio = step < pitchSpeed ? std::exp2 ((float) pitchDirection * step / 12.0f)
+                                   : (pitchDirection > 0 ? pitchUpRatio : pitchDownRatio);
+    pitchWetOffset = reading + (float) pitchDirection * step;
+
+    return levelMix (pitchInput.read (delayA), gain, pitchInput.read (delayB), pitchHeads);
 }
 
 float GlitchChain::ringModulate (float input) noexcept

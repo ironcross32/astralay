@@ -1,4 +1,4 @@
-﻿#include "PluginEditor.h"
+#include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "params/Parameters.h"
 
@@ -69,11 +69,11 @@ public:
             for (auto* c : stops)
                 titles.add (titleOf (*c));
 
-            // Main 5, tap 2 + 6 basics + 31 glitch controls (synced stutter slices share rows), global 15,
+            // Main 5, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), global 15,
             // performance 1.
-            expectEquals ((int) stops.size(), 60);
+            expectEquals ((int) stops.size(), 62);
 
-            if (stops.size() != 60)
+            if (stops.size() != 62)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
             const juce::StringArray expectedStart { "Undo", "Redo", "Save", "Load", "Preset: Init",
@@ -96,7 +96,7 @@ public:
             for (int i = 0; i < expectedEnd.size(); ++i)
                 expectEquals (titles[titles.size() - expectedEnd.size() + i], expectedEnd[i]);
 
-            expectEquals (titles.indexOf ("Tap 1 Bit Crusher Maximum Rate Reduction"), 43);
+            expectEquals (titles.indexOf ("Tap 1 Bit Crusher Maximum Rate Reduction"), 45);
         }
 
         beginTest ("Controls sit inside named groups for VoiceOver");
@@ -277,6 +277,60 @@ public:
 
             ed.keyPressed (juce::KeyPress ('y', command, 0));
             expect (valueOf (processor, global::sync) < 0.5f);
+        }
+
+        beginTest ("Output gain has a context menu, offered to screen readers as an action");
+        {
+            const auto showMenu = juce::AccessibilityActionType::showMenu;
+            auto* gain = findByTitle (ed, "Output Gain");
+            auto* mix = findByTitle (ed, "Mix");
+            expect (gain != nullptr && mix != nullptr);
+
+            if (gain != nullptr && mix != nullptr)
+            {
+                auto* gainMenu = dynamic_cast<astralay::ui::ContextMenuTarget*> (gain);
+                auto* mixMenu = dynamic_cast<astralay::ui::ContextMenuTarget*> (mix);
+
+                expect (gainMenu != nullptr && gainMenu->hasContextMenu());
+                expect (mixMenu != nullptr && ! mixMenu->hasContextMenu());
+
+                expect (gain->getAccessibilityHandler()->getActions().contains (showMenu));
+                expect (! mix->getAccessibilityHandler()->getActions().contains (showMenu));
+            }
+
+            // Pitch probability's menu chooses the pitch mode, a parameter of the tap.
+            auto* pitch = findByTitle (ed, "Tap 1 Pitch Probability");
+            auto* pitchMenu = dynamic_cast<astralay::ui::ContextMenuTarget*> (pitch);
+            expect (pitchMenu != nullptr && pitchMenu->hasContextMenu());
+
+            if (pitch != nullptr)
+                expect (pitch->getAccessibilityHandler()->getActions().contains (showMenu));
+
+            auto* mode = processor.getState().getParameter (tapId (0, tap::pitchMode));
+            expect (mode != nullptr);
+
+            if (mode != nullptr)
+            {
+                expectEquals (mode->getName (100), juce::String ("Tap 1 Pitch Mode"));
+                expectEquals (mode->getCurrentValueAsText(), juce::String ("Sweep"));
+                expectEquals (mode->getAllValueStrings().joinIntoString (","), juce::String ("Sweep,Varispeed"));
+            }
+
+            // The output clip is saved with the session, but a preset leaves it alone.
+            expect (processor.getOutputClip() == OutputClip::plus18);
+            processor.setOutputClip (OutputClip::zero);
+
+            juce::MemoryBlock saved;
+            processor.getStateInformation (saved);
+
+            AstralayProcessor restored;
+            restored.setStateInformation (saved.getData(), (int) saved.getSize());
+            expect (restored.getOutputClip() == OutputClip::zero);
+
+            restored.loadFactoryPreset (0);
+            expect (restored.getOutputClip() == OutputClip::zero);
+
+            processor.setOutputClip (OutputClip::plus18);
         }
 
         beginTest ("The performance area selects taps, moves their times and freezes");

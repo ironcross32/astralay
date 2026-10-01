@@ -84,6 +84,9 @@ juce::String format (Unit unit, float value, float decibelFloor)
             return sign + trimmedNumber (rounded, 1) + " semitones";
         }
 
+        case Unit::semitonesPerPass:
+            return trimmedNumber (value, 1) + " semitones per pass";
+
         case Unit::ratio:
         case Unit::index:
             return trimmedNumber (value, 2);
@@ -171,6 +174,7 @@ std::optional<float> parse (Unit unit, const juce::String& text, float decibelFl
             break;
 
         case Unit::semitones:
+        case Unit::semitonesPerPass:
             if (suffix == "st" || suffix == "semitone" || suffix == "semitones") return number;
             break;
 

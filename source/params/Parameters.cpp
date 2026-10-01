@@ -126,7 +126,11 @@ namespace
         auto pitch = makeGroup ("tap" + juce::String (t + 1) + "_pitch", "Pitch");
         pitch->addChild (probability (tap::pitchProb),
                          f (tap::pitchMin, linear (-24.0f, 24.0f), -12.0f),
-                         f (tap::pitchMax, linear (-24.0f, 24.0f), 12.0f));
+                         f (tap::pitchMax, linear (-24.0f, 24.0f), 12.0f),
+                         f (tap::pitchSpeedMin, linear (0.0f, 24.0f), 0.0f),
+                         f (tap::pitchSpeedMax, linear (0.0f, 24.0f), 12.0f),
+                         std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { id (tap::pitchMode), 1 }, name (tap::pitchMode),
+                                                                       juce::StringArray { "Sweep", "Varispeed" }, 0));
 
         auto lpc = makeGroup ("tap" + juce::String (t + 1) + "_lpc", "LPC formant");
         lpc->addChild (probability (tap::lpcProb),
@@ -236,6 +240,9 @@ juce::String tapParameterName (int tapIndex, const char* suffix)
         { tap::pitchProb, "Pitch Probability" },
         { tap::pitchMin,  "Pitch Minimum" },
         { tap::pitchMax,  "Pitch Maximum" },
+        { tap::pitchSpeedMin, "Pitch Minimum Speed" },
+        { tap::pitchSpeedMax, "Pitch Maximum Speed" },
+        { tap::pitchMode, "Pitch Mode" },
 
         { tap::lpcProb, "LPC Formant Probability" },
         { tap::lpcMin,  "LPC Formant Minimum Shift" },
@@ -297,6 +304,8 @@ Unit unitFor (const juce::String& id)
         { tap::grainDensMax, Unit::grainsPerSecond },
         { tap::pitchMin,     Unit::semitones },
         { tap::pitchMax,     Unit::semitones },
+        { tap::pitchSpeedMin, Unit::semitonesPerPass },
+        { tap::pitchSpeedMax, Unit::semitonesPerPass },
         { tap::lpcMin,       Unit::semitones },
         { tap::lpcMax,       Unit::semitones },
         { tap::cepsMin,      Unit::semitones },
@@ -341,6 +350,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 
     layout.add (createGlobalGroup());
     return layout;
+}
+
+float outputClipCeiling (OutputClip clip) noexcept
+{
+    switch (clip)
+    {
+        // A hair under +18 dBFS, so that rounding can't carry a clipped peak over a host's limit there.
+        case OutputClip::plus18: return juce::Decibels::decibelsToGain (18.0f) * 0.9999f;
+        case OutputClip::zero:   return 1.0f;
+        case OutputClip::off:    break;
+    }
+
+    return 0.0f;
 }
 
 float volumeDbToGain (float db) noexcept

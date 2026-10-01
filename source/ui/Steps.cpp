@@ -20,6 +20,7 @@ namespace
             case Unit::percent:         return { 1.0, 0.1, 10.0 };
             case Unit::pan:             return { 1.0, 0.1, 10.0 };
             case Unit::semitones:       return { 1.0, 0.1, 12.0 };
+            case Unit::semitonesPerPass: return { 0.5, 0.1, 3.0 };
             case Unit::ratio:           return { 0.1, 0.01, 1.0 };
             case Unit::index:           return { 0.1, 0.01, 1.0 };
             case Unit::multiplier:      return { 1.0, 0.1, 8.0 };

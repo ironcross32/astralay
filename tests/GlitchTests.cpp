@@ -227,6 +227,7 @@ public:
         {
             TapGlitchSettings settings;
             settings.pitch = { 12.0f, 12.0f };
+            settings.pitchSpeed = { 12.0f, 12.0f };
 
             const auto in = sine (48000, 440.0f);
             const auto out = runChain (GlitchType::pitch, in, 1000, 40000, settings);
@@ -234,6 +235,53 @@ public:
             // Count over one second, well inside the glitch.
             const auto crossings = upwardCrossings (out, 4000, 28000);
             expectWithinAbsoluteError ((float) crossings / 0.5f, 880.0f, 60.0f);
+        }
+
+        beginTest ("A sweep is held to its range when one step would carry it past");
+        {
+            TapGlitchSettings settings;
+            settings.pitch = { -5.0f, 5.0f };
+            settings.pitchSpeed = { 12.0f, 12.0f };
+
+            const auto in = sine (48000, 440.0f);
+            const auto out = runChain (GlitchType::pitch, in, 1000, 40000, settings);
+
+            // Five semitones either way: 330 Hz or 587 Hz, never the octave the speed asks for.
+            const auto frequency = (float) upwardCrossings (out, 4000, 28000) / 0.5f;
+            expect (std::abs (frequency - 587.0f) < 40.0f || std::abs (frequency - 330.0f) < 25.0f,
+                    "Frequency " + juce::String (frequency));
+        }
+
+        beginTest ("Varispeed asks the tap for a different delay time and leaves the audio alone");
+        {
+            GlitchChain chain;
+            chain.prepare (rate);
+
+            TapGlitchSettings settings;
+            settings.varispeed = true;
+            settings.pitch = { 12.0f, 12.0f };
+
+            GlitchGlobalSettings global;
+            global.chunkSamples = 2000;
+            global.lengthChunks = { 1.0f, 1.0f };
+            chain.setSettings (settings, global);
+
+            const auto in = sine (6000, 440.0f);
+            expectEquals (chain.getDelayScale(), 1.0f);
+
+            for (int i = 0; i < 6000; ++i)
+            {
+                if (i == 1000)
+                    chain.startForTesting (GlitchType::pitch);
+
+                expectEquals (chain.process (in[(size_t) i]), in[(size_t) i]);
+
+                // An octave up is half the delay, for as long as the glitch lasts.
+                if (i >= 1000 && i < 2999)
+                    expectWithinAbsoluteError (chain.getDelayScale(), 0.5f, 1.0e-5f);
+                else if (i < 1000 || i >= 3000)
+                    expectEquals (chain.getDelayScale(), 1.0f);
+            }
         }
 
         beginTest ("Bit crusher quantises to the chosen bit depth");

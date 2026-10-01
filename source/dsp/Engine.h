@@ -14,6 +14,7 @@ struct GlobalSettings
     bool freeze = false;
     float mix = 0.5f;           // 0 (dry) to 1 (wet).
     float outputGain = 1.0f;    // Linear.
+    float clipCeiling = 0.0f;   // Linear level the output is hard clipped at; 0 doesn't clip.
     float smearAmount = 0.0f;   // 0 to 1.
     float smearSeconds = 0.2f;
 
@@ -34,7 +35,7 @@ struct TransportInfo
 };
 
 /** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, smear on the combined
-    repeats, dry/wet mix and output gain.
+    repeats, dry/wet mix, output gain and the output hard clip.
 */
 class Engine
 {
@@ -60,8 +61,16 @@ public:
 
     const Tap& getTap (int tapIndex) const { return taps[(size_t) tapIndex]; }
 
+    /** Reports glitches and levels to a diagnostic log, or to none with a null sink. Does nothing
+        in builds without diagnostics. Not while audio is running.
+    */
+    void setDiagnostics (diagnostics::Sink* sink);
+
 private:
     void restartRandomness (juce::int64 baseSeed);
+
+    diagnostics::Sink* diagnosticSink = nullptr;
+    diagnostics::OutputProbe outputProbe;
 
     std::array<Tap, numTaps> taps;
     Smear smear;

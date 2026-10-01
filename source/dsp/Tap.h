@@ -37,13 +37,22 @@ public:
     /** Call once per block before processing. glideSeconds is the global glide time. */
     void setSettings (const TapSettings& settings, float glideSeconds, const GlitchGlobalSettings& glitchGlobal);
 
-    /** Rolls for new glitches at a chunk boundary. */
-    void onChunkBoundary() { glitches.onChunkBoundary(); }
+    /** Rolls for new glitches at a chunk boundary, which comes before that sample is processed.
+        freeze is as for process().
+    */
+    void onChunkBoundary (float freeze)
+    {
+        glitches.setLoop (delay.getCurrentValue(), loopGainFor (feedback.getCurrentValue(), freeze));
+        glitches.onChunkBoundary();
+    }
 
     /** Restarts the tap's random sequence and stops its glitches. */
     void restartGlitches (juce::int64 seed);
 
     const GlitchChain& getGlitches() const noexcept { return glitches; }
+
+    /** Reports this tap to a diagnostic log, or to none with a null sink. Call after prepare(). */
+    void setDiagnostics (diagnostics::Sink* sink, int tapIndex) noexcept { glitches.getProbe().attach (sink, tapIndex, sampleRate); }
 
     /** True when the tap is off and fully faded out, so processing can be skipped. */
     bool isIdle() const noexcept { return idle; }
@@ -57,8 +66,17 @@ public:
     void endBlock() noexcept;
 
 private:
+    /** How much of the loop survives each trip round. Freeze raises the feedback to unity. */
+    static float loopGainFor (float feedbackGain, float freeze) noexcept { return feedbackGain + (1.0f - feedbackGain) * freeze; }
+
+    float scaledDelay() const noexcept
+    {
+        return juce::jlimit (DelayLine::minDelaySamples, line.getMaxDelay(), baseDelay * delayScale);
+    }
+
     DelayLine line;
     GlitchChain glitches;
+    float baseDelay = 0.0f, delayScale = 1.0f;
     bool glitchesHeard = false;
     juce::dsp::StateVariableTPTFilter<float> lowCut, highCut;
 

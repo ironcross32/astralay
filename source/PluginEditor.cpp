@@ -44,7 +44,9 @@ namespace
                                         { "Max density", grainDensMax } } },
             { "Pitch",                { { "Probability", pitchProb },
                                         { "Minimum", pitchMin },
-                                        { "Maximum", pitchMax } } },
+                                        { "Maximum", pitchMax },
+                                        { "Min speed", pitchSpeedMin },
+                                        { "Max speed", pitchSpeedMax } } },
             { "LPC formant",          { { "Probability", lpcProb },
                                         { "Min shift", lpcMin },
                                         { "Max shift", lpcMax } } },
@@ -269,7 +271,12 @@ void AstralayEditor::buildTapGroup()
         tapGroup.addInOrder (*section.group);
 
         for (const auto& rowSpec : spec.rows)
-            addSliderRow (*section.group, section.items, rowSpec.visibleLabel, rowSpec.suffix, rowSpec.syncSuffix, true);
+        {
+            auto& slider = addSliderRow (*section.group, section.items, rowSpec.visibleLabel, rowSpec.suffix, rowSpec.syncSuffix, true).slider;
+
+            if (juce::String (rowSpec.suffix) == pitchProb)
+                slider.setContextMenu ([this, &slider] { showPitchModeMenu (slider); });
+        }
     }
 }
 
@@ -302,7 +309,8 @@ void AstralayEditor::buildGlobalGroup()
     addSliderRow (outputGroup, outputItems, "Smear amount", smearAmount, nullptr, false);
     addSliderRow (outputGroup, outputItems, "Smear size", smearSize, nullptr, false);
     addSliderRow (outputGroup, outputItems, "Mix", mix, nullptr, false);
-    addSliderRow (outputGroup, outputItems, "Output gain", outputGain, nullptr, false);
+    auto& gain = addSliderRow (outputGroup, outputItems, "Output gain", outputGain, nullptr, false).slider;
+    gain.setContextMenu ([this, &gain] { showOutputClipMenu (gain); });
 }
 
 void AstralayEditor::buildPerformanceGroup()
@@ -417,6 +425,10 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
         toggleAndAnnounce (params::global::sync, "Host sync");
         return true;
     }
+
+    // Stands in for the applications key, which JUCE doesn't reliably receive on Windows.
+    if (! mods.isCommandDown() && (key.getTextCharacter() == ']' || (key.getKeyCode() == ']' && ! mods.isAnyModifierKeyDown())))
+        return showContextMenuForFocus();
 
     // The performance area has its own meanings for the remaining keys.
     if (performancePad.hasKeyboardFocus (true))
@@ -646,6 +658,72 @@ void AstralayEditor::showLoadDialog()
             return;
 
         safeThis->announce (safeThis->processor.loadPresetFile (file));
+    });
+}
+
+bool AstralayEditor::showContextMenuForFocus()
+{
+    for (auto* c = juce::Component::getCurrentlyFocusedComponent(); c != nullptr && c != this; c = c->getParentComponent())
+    {
+        if (auto* target = dynamic_cast<ui::ContextMenuTarget*> (c); target != nullptr && target->hasContextMenu())
+        {
+            target->showContextMenu();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void AstralayEditor::showOutputClipMenu (juce::Component& target)
+{
+    // In params::OutputClip order.
+    static const std::array<const char*, 3> items { "Clip at +18 dBFS", "Clip at 0 dBFS", "No clipping" };
+
+    const auto current = (int) processor.getOutputClip();
+
+    juce::PopupMenu menu;
+
+    for (int i = 0; i < (int) items.size(); ++i)
+        menu.addItem (i + 1, items[(size_t) i], true, i == current);
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
+                        [safeThis = SafePointer<AstralayEditor> (this)] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+
+        safeThis->processor.setOutputClip ((params::OutputClip) (result - 1));
+        safeThis->announce (items[(size_t) (result - 1)]);
+    });
+}
+
+void AstralayEditor::showPitchModeMenu (juce::Component& target)
+{
+    // For the tap selected when the menu opened, even if another is selected before a choice is made.
+    auto* parameter = state.getParameter (params::tapId (selectedTap, params::tap::pitchMode));
+    const auto choices = parameter->getAllValueStrings();
+    const auto current = juce::roundToInt (parameter->convertFrom0to1 (parameter->getValue()));
+
+    juce::PopupMenu menu;
+
+    for (int i = 0; i < choices.size(); ++i)
+        menu.addItem (i + 1, choices[i], true, i == current);
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
+                        [safeThis = SafePointer<AstralayEditor> (this), parameter, choices, current] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+
+        if (result - 1 != current)
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) (result - 1)));
+            parameter->endChangeGesture();
+        }
+
+        safeThis->announce (choices[result - 1]);
     });
 }
 

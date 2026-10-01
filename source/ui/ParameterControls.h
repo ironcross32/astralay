@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "ContextMenu.h"
 #include "Steps.h"
 
 namespace astralay::ui
@@ -13,7 +14,8 @@ namespace astralay::ui
     coarse), Home and End go to the maximum and minimum, Delete resets to the
     default, and Enter opens a type-in field.
 */
-class ParameterSlider final : public juce::Slider
+class ParameterSlider final : public juce::Slider,
+                              public ContextMenuTarget
 {
 public:
     ParameterSlider();
@@ -30,8 +32,17 @@ public:
     /** Opens the type-in field over the slider. */
     void showTypeIn();
 
+    /** Gives the slider a context menu: show is called to open it. */
+    void setContextMenu (std::function<void()> show);
+
+    bool hasContextMenu() const override { return showMenu != nullptr; }
+    void showContextMenu() override;
+
     juce::String getTextFromValue (double value) override;
     bool keyPressed (const juce::KeyPress&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
 
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
@@ -58,6 +69,8 @@ private:
     StepContext steps;
     std::unique_ptr<TypeIn> typeIn;
     bool updatingFromParameter = false;
+    std::function<void()> showMenu;
+    bool menuClick = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParameterSlider)
 };

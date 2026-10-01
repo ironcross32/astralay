@@ -22,7 +22,7 @@ class ParameterSlider::AccessibilityHandler final : public juce::AccessibilityHa
 {
 public:
     explicit AccessibilityHandler (ParameterSlider& s)
-        : juce::AccessibilityHandler (s, juce::AccessibilityRole::slider, juce::AccessibilityActions(),
+        : juce::AccessibilityHandler (s, juce::AccessibilityRole::slider, actionsFor (s),
                                       Interfaces { std::make_unique<Value> (s) }),
           slider (s)
     {
@@ -31,6 +31,16 @@ public:
     juce::String getHelp() const override { return slider.getHelpText(); }
 
 private:
+    static juce::AccessibilityActions actionsFor (ParameterSlider& s)
+    {
+        juce::AccessibilityActions actions;
+
+        if (s.hasContextMenu())
+            actions.addAction (juce::AccessibilityActionType::showMenu, [&s] { s.showContextMenu(); });
+
+        return actions;
+    }
+
     class Value final : public juce::AccessibilityValueInterface
     {
     public:
@@ -227,6 +237,45 @@ bool ParameterSlider::keyPressed (const juce::KeyPress& key)
     }
 
     return false;
+}
+
+void ParameterSlider::setContextMenu (std::function<void()> show)
+{
+    showMenu = std::move (show);
+
+    // The handler's actions are fixed when it is made.
+    invalidateAccessibilityHandler();
+}
+
+void ParameterSlider::showContextMenu()
+{
+    if (showMenu != nullptr)
+        showMenu();
+}
+
+void ParameterSlider::mouseDown (const juce::MouseEvent& e)
+{
+    // A right-click opens the menu, and the rest of that click is kept from dragging the slider.
+    menuClick = e.mods.isPopupMenu() && hasContextMenu();
+
+    if (menuClick)
+        showContextMenu();
+    else
+        Slider::mouseDown (e);
+}
+
+void ParameterSlider::mouseDrag (const juce::MouseEvent& e)
+{
+    if (! menuClick)
+        Slider::mouseDrag (e);
+}
+
+void ParameterSlider::mouseUp (const juce::MouseEvent& e)
+{
+    if (! menuClick)
+        Slider::mouseUp (e);
+
+    menuClick = false;
 }
 
 void ParameterSlider::showTypeIn()

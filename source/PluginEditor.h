@@ -16,7 +16,7 @@ class AstralayProcessor;
     (Cmd on macOS) jump to the first control of the next or previous group. Outside the
     performance area, the number keys, minus and equals switch taps without moving focus,
     Backspace turns the selected tap on or off, and Ctrl+C and Ctrl+V copy and paste a tap or one
-    of its settings.
+    of its settings. The right bracket key opens the focused control's context menu, if it has one.
 */
 class AstralayEditor final : public juce::AudioProcessorEditor,
                              public astralay::ui::AnnouncementTarget,
@@ -97,6 +97,13 @@ private:
     void showSaveDialog();
     void showLoadMenu();
     void showLoadDialog();
+
+    /** Opens the context menu of the focused control, or of the nearest control around it that
+        has one. Returns false if there is none.
+    */
+    bool showContextMenuForFocus();
+    void showOutputClipMenu (juce::Component& target);
+    void showPitchModeMenu (juce::Component& target);
 
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
     void jumpToGroup (int direction);

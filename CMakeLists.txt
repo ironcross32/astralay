@@ -84,6 +84,7 @@ target_sources(Astralay
         source/state/History.cpp
         source/state/Presets.cpp
         source/ui/Announcer.cpp
+        source/ui/ContextMenu.cpp
         source/ui/HelpText.cpp
         source/ui/ParameterControls.cpp
         source/ui/PerformancePad.cpp
@@ -149,6 +150,7 @@ if(ASTRALAY_BUILD_TESTS)
             source/state/History.cpp
             source/state/Presets.cpp
             source/ui/Announcer.cpp
+            source/ui/ContextMenu.cpp
             source/ui/HelpText.cpp
             source/ui/ParameterControls.cpp
             source/ui/PerformancePad.cpp

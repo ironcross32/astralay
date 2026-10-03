@@ -320,6 +320,7 @@ void AstralayEditor::buildPerformanceGroup()
 
     performancePad.onSelectionChanged = [this] (juce::uint32 selection) { processor.setPerformanceSelection (selection); };
     performancePad.onStepTimes = [this] (int direction, bool continuing) { processor.stepSelectedTapTimes (direction, continuing); };
+    performancePad.onStepSmear = [this] (bool amount, int direction, bool continuing) { processor.stepSmear (amount, direction, continuing); };
     performancePad.onHoldFreeze = [this] (bool held) { holdFreeze (held); };
     performancePad.onToggleFreeze = [this] { toggleAndAnnounce (params::global::freeze, "Freeze"); };
 
@@ -663,13 +664,10 @@ void AstralayEditor::showLoadDialog()
 
 bool AstralayEditor::showContextMenuForFocus()
 {
-    for (auto* c = juce::Component::getCurrentlyFocusedComponent(); c != nullptr && c != this; c = c->getParentComponent())
+    if (auto* target = ui::findContextMenu (juce::Component::getCurrentlyFocusedComponent()))
     {
-        if (auto* target = dynamic_cast<ui::ContextMenuTarget*> (c); target != nullptr && target->hasContextMenu())
-        {
-            target->showContextMenu();
-            return true;
-        }
+        target->showContextMenu();
+        return true;
     }
 
     return false;
@@ -774,6 +772,9 @@ void AstralayEditor::globalFocusChanged (juce::Component* focused)
 {
     if (focusOutline != nullptr)
         focusOutline->setTarget (focused);
+
+    // Focus changes arrive from the whole desktop, other plugin windows included.
+    contextMenuHint.focusChanged (focused != nullptr && isParentOf (focused) ? focused : nullptr);
 }
 
 //==============================================================================

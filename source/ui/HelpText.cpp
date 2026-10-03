@@ -43,7 +43,7 @@ juce::String helpFor (const juce::String& key)
         { tap::grainDensMin, "The fewest possible number of grains per second." },
         { tap::grainDensMax, "The most possible number of grains per second." },
 
-        { tap::pitchProb, "The chance, per chunk, that this tap shifts in pitch. Its context menu chooses between sweep and varispeed." },
+        { tap::pitchProb, "The chance, per chunk, that this tap shifts in pitch." },
         { tap::pitchMin,  "The lowest the pitch goes. A sweep turns back when it gets here." },
         { tap::pitchMax,  "The highest the pitch goes. A sweep turns back when it gets here." },
         { tap::pitchSpeedMin, "The slowest a sweep moves, for each pass through the tap. Varispeed doesn't use it." },
@@ -93,7 +93,7 @@ juce::String helpFor (const juce::String& key)
         { global::smearAmount, "How much the combined repeats are smeared and diffused." },
         { global::smearSize,   "The size of the smear, higher values exaggerate the effect." },
         { global::mix,         "The balance between the dry input and the repeats. 0% is dry only, 100% is repeats only." },
-        { global::outputGain,  "The overall output level. Its context menu sets where the output is clipped." },
+        { global::outputGain,  "The overall output level." },
 
         // Performance
         { helpKeys::performance, "Provides additional functionality for live performance." },

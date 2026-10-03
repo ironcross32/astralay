@@ -101,6 +101,17 @@ public:
     */
     bool stepSelectedTapTimes (int direction, bool mergeWithPrevious);
 
+    /** What one performance step adds to the smear size, in milliseconds, and to the smear amount,
+        in percent.
+    */
+    static constexpr float performanceSmearSizeStep = 10.0f;
+    static constexpr float performanceSmearAmountStep = 5.0f;
+
+    /** Moves the smear size, or the smear amount, one step up or down, stopping at its limits.
+        Returns whether it moved.
+    */
+    bool stepSmear (bool amount, int direction, bool mergeWithPrevious);
+
 private:
     struct TapParameters
     {

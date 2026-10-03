@@ -82,6 +82,8 @@ The Performance group holds a single control, the performance area. While it has
 | Select all taps, or none | Backspace |
 | Select the even taps, or the odd ones | Shift+Backspace |
 | Make the selected taps' times 10% longer or shorter | Up or Down arrow |
+| Lower or raise the smear size by 10 ms | Left or Right arrow |
+| Lower or raise the smear amount by 5% | Shift+Left or Shift+Right arrow |
 | Freeze while held | F |
 | Switch freeze on or off | Shift+F |
 

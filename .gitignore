@@ -16,3 +16,6 @@ Thumbs.db
 build-clangd/
 compile_commands.json
 .clangd
+
+# Miscellaneous tools / scripts
+ignore/

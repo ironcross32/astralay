@@ -143,7 +143,7 @@ Output:
 
 ### Undo
 
-- Undo covers parameter changes, tap enable/disable, pastes, performance-area time changes, and preset loads. Changing the selected tap, the performance selection and a held freeze are not undoable.
+- Undo covers parameter changes, tap enable/disable, pastes, performance-area time and smear changes, and preset loads. Changing the selected tap, the performance selection and a held freeze are not undoable.
 - One slider gesture is one undo step. A run of edits to the same parameter less than 600 ms apart (such as repeated arrow presses) joins into one step.
 - Only the user's edits are recorded, recognised by their change gestures; host automation never enters the undo history or marks the preset modified.
 - Undoing a preset load restores the previous values, preset name and modified state.
@@ -204,7 +204,8 @@ Keyboard shortcuts, Windows / macOS:
 - Context menu: ] on both platforms. Opens the context menu of the focused control, if it has one, and does nothing otherwise. It stands in for the applications key, which JUCE doesn't reliably receive on Windows.
 
 Context menus:
-- A control with a context menu opens it three ways: the ] key, a right-click, and the screen reader's show-menu action (VO+SHIFT+M in VoiceOver). Its help tag mentions the menu.
+- A control with a context menu opens it three ways: the ] key, a right-click, and the screen reader's show-menu action (VO+SHIFT+M in VoiceOver).
+- Moving focus to a control with a context menu announces "has context menu" after the screen reader has read the control. Help tags don't mention menus, and nothing says what a menu contains; users explore it themselves. In code this is `ContextMenuHint`, which finds the menu through `ContextMenuTarget`, so a new menu is announced without further work.
 - Choosing an item announces it. The menu's current setting is ticked.
 - Output gain: "Clip at +18 dBFS", "Clip at 0 dBFS", "No clipping", setting the output clip.
 - Pitch probability: "Sweep", "Varispeed", setting the selected tap's pitch mode. This is a parameter, so choosing one is an undoable edit.
@@ -249,6 +250,7 @@ It acts on a selection of taps, which is separate from the selected tap and has 
 - BACKSPACE selects all taps, or none if all are already selected, announcing "All taps" or "No taps".
 - SHIFT+BACKSPACE selects the even-numbered taps, or the odd-numbered ones if exactly the even ones are selected, announcing "Even taps" or "Odd taps".
 - UP and DOWN make the time of every selected tap that is on 10% longer or shorter (multiplying or dividing by 1.1, so the taps keep their ratios). While host sync is on they move each tap by one note value instead. If any of those taps would pass its limit, none of them move. There are no modifiers and nothing is announced. One press is one undo step for all the taps, and the repeats of a held key join into that step.
+- LEFT and RIGHT lower and raise the smear size by 10 ms; with SHIFT they lower and raise the smear amount by 5%. Both stop at their limits. Nothing is announced. One press is one undo step, and the repeats of a held key join into that step.
 - F freezes while it is held and releases when it is let go or focus leaves. If freeze was already on, releasing F turns it off. It is not announced and adds no undo step, but is sent to the host as one gesture so it can be recorded as automation.
 - SHIFT+F switches freeze on or off, announcing "Freeze on" or "Freeze off".
 

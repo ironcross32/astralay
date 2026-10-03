@@ -13,9 +13,10 @@ int tapIndexForKey (const juce::KeyPress& key);
 /** The performance area: one focusable control whose keys play the plugin rather than edit it.
 
     Number keys choose the taps it acts on (Backspace switches between all and none, Shift+Backspace
-    between even and odd), the up and down arrows lengthen and shorten those taps' times, F freezes
-    while held and Shift+F switches freeze on or off. Changes to the selection are announced; the
-    arrows and the held freeze are silent.
+    between even and odd), the up and down arrows lengthen and shorten those taps' times, the left
+    and right arrows change the smear size (the smear amount with Shift), F freezes while held and
+    Shift+F switches freeze on or off. Changes to the selection are announced; the arrows and the
+    held freeze are silent.
 
     It shows a cell per tap, which can also be clicked, and whether freeze is on. It owns no plugin
     state: the owner supplies the selection and carries out what the callbacks ask for.
@@ -34,6 +35,11 @@ public:
         a held key.
     */
     std::function<void (int direction, bool continuing)> onStepTimes;
+
+    /** Called for each left or right arrow press: 1 for right, -1 for left. amount is true with
+        Shift, for the smear amount rather than its size.
+    */
+    std::function<void (bool amount, int direction, bool continuing)> onStepSmear;
 
     /** Called with true when F goes down and false when it is released or focus leaves. */
     std::function<void (bool held)> onHoldFreeze;
@@ -69,6 +75,7 @@ private:
 
     // Key codes of the keys being held, or 0.
     int heldArrow = 0;
+    bool heldArrowShifted = false;
     int heldFreezeKey = 0;
     bool holdingFreeze = false;
 

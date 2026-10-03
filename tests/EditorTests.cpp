@@ -134,6 +134,15 @@ public:
                     expect (handler->getHelp().isNotEmpty(), "No help for " + titleOf (*c));
         }
 
+        beginTest ("Help tags leave context menus to the spoken hint");
+        {
+            for (auto* c : tabOrder (ed))
+                if (auto* handler = c->getAccessibilityHandler())
+                    expect (! handler->getHelp().containsIgnoreCase ("menu"), "Help mentions a menu: " + titleOf (*c));
+
+            expectEquals (astralay::ui::ContextMenuHint::message(), juce::String ("has context menu"));
+        }
+
         beginTest ("Selecting a tap renames the group and rebinds its controls");
         {
             auto* selector = dynamic_cast<juce::ComboBox*> (findByTitle (ed, "Selected tap"));
@@ -296,6 +305,11 @@ public:
 
                 expect (gain->getAccessibilityHandler()->getActions().contains (showMenu));
                 expect (! mix->getAccessibilityHandler()->getActions().contains (showMenu));
+
+                // What decides whether "has context menu" is spoken on focus.
+                expect (astralay::ui::findContextMenu (gain) == gainMenu);
+                expect (astralay::ui::findContextMenu (mix) == nullptr);
+                expect (astralay::ui::findContextMenu (nullptr) == nullptr);
             }
 
             // Pitch probability's menu chooses the pitch mode, a parameter of the tap.
@@ -432,6 +446,37 @@ public:
                 pad->keyPressed (juce::KeyPress ('2'));
                 enabled2->setValueNotifyingHost (0.0f);
                 processor.getHistory().clear();
+
+                // Left and right move the smear size; with Shift, the smear amount.
+                const auto left = juce::KeyPress::leftKey, right = juce::KeyPress::rightKey;
+
+                pad->keyPressed (juce::KeyPress (right));
+                pad->keyPressed (juce::KeyPress (right));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, global::smearSize), 220.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, global::smearAmount), 10.0f, 0.01f);
+
+                pad->keyPressed (juce::KeyPress (left, shift, 0));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, global::smearAmount), 5.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, global::smearSize), 220.0f, 0.01f);
+
+                // They stop at the limits, where a press adds no undo step.
+                pad->keyPressed (juce::KeyPress (left, shift, 0));
+                release();
+                pad->keyPressed (juce::KeyPress (left, shift, 0));
+                release();
+                expectWithinAbsoluteError (valueOf (processor, global::smearAmount), 0.0f, 0.01f);
+
+                // A held key's repeats are one undo step.
+                processor.getHistory().undo();
+                processor.getHistory().undo();
+                expectWithinAbsoluteError (valueOf (processor, global::smearAmount), 10.0f, 0.01f);
+                expectWithinAbsoluteError (valueOf (processor, global::smearSize), 220.0f, 0.01f);
+
+                processor.getHistory().undo();
+                expectWithinAbsoluteError (valueOf (processor, global::smearSize), 200.0f, 0.01f);
+                expect (! processor.getHistory().canUndo());
 
                 // F freezes while held, without an undo step; from a latched freeze it ends off.
                 pad->keyPressed (juce::KeyPress ('f'));

@@ -118,10 +118,26 @@ bool PerformancePad::keyPressed (const juce::KeyPress& key)
         // Still held from the last press: this one is a repeat.
         const auto continuing = heldArrow == code;
         heldArrow = code;
+        heldArrowShifted = false;
         startTimerHz (30);
 
         if (onStepTimes != nullptr)
             onStepTimes (code == juce::KeyPress::upKey ? 1 : -1, continuing);
+
+        return true;
+    }
+
+    if (code == juce::KeyPress::leftKey || code == juce::KeyPress::rightKey)
+    {
+        // Shift changes which setting moves, so a press with it changed isn't a repeat.
+        const auto amount = mods.isShiftDown();
+        const auto continuing = heldArrow == code && heldArrowShifted == amount;
+        heldArrow = code;
+        heldArrowShifted = amount;
+        startTimerHz (30);
+
+        if (onStepSmear != nullptr)
+            onStepSmear (amount, code == juce::KeyPress::rightKey ? 1 : -1, continuing);
 
         return true;
     }

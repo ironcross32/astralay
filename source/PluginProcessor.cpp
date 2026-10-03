@@ -265,6 +265,25 @@ bool AstralayProcessor::stepSelectedTapTimes (int direction, bool mergeWithPrevi
     return true;
 }
 
+bool AstralayProcessor::stepSmear (bool amount, int direction, bool mergeWithPrevious)
+{
+    using namespace astralay::params;
+
+    const juce::String id (amount ? global::smearAmount : global::smearSize);
+    const auto* parameter = state.getParameter (id);
+    const auto& range = parameter->getNormalisableRange();
+    const auto current = range.convertFrom0to1 (parameter->getValue());
+
+    const auto step = amount ? performanceSmearAmountStep : performanceSmearSizeStep;
+    const auto next = juce::jlimit (range.start, range.end, current + (float) direction * step);
+
+    if (std::abs (next - current) <= (range.end - range.start) * 1.0e-6f)
+        return false;
+
+    applyEdit ({ { id, range.convertTo0to1 (next) } }, amount ? "smear amount" : "smear size", mergeWithPrevious);
+    return true;
+}
+
 void AstralayProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engine.prepare (sampleRate, samplesPerBlock, astralay::params::maxDelaySeconds);

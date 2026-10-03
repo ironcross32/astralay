@@ -80,6 +80,15 @@ private:
 
     /** Selects a tap from the keyboard, announcing its number. Does nothing if it is selected. */
     void switchToTap (int tapIndex);
+
+   #if JUCE_MAC
+    /** The value of the focused per-tap control as ", <value>", or an empty string if focus is
+        elsewhere.
+    */
+    juce::String focusedTapControlValue() const;
+    int tapSwitchAnnouncement = 0;
+   #endif
+
     void toggleSelectedTap();
 
     /** Switches a bool parameter as an undoable edit and announces "<name> on" or "<name> off". */

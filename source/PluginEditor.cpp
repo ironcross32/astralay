@@ -498,10 +498,32 @@ void AstralayEditor::switchToTap (int tapIndex)
     if (tapIndex == selectedTap)
         return;
 
-    // The tap selector reads out its own new value, so the number is only announced elsewhere.
-    // It doesn't interrupt, so the focused control's value for the new tap follows it.
     const auto onSelector = tapSelector.hasKeyboardFocus (true);
 
+   #if JUCE_MAC
+    selectTap (tapIndex);
+
+    if (onSelector)
+        if (auto* handler = tapSelector.getAccessibilityHandler())
+            handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+
+    // VoiceOver doesn't queue an announcement behind the focused control's value change: it drops
+    // one or the other, and often both. So the number and the focused control's value for the new
+    // tap go out as a single announcement, once the value change has been sent, interrupting
+    // whatever VoiceOver made of that.
+    const auto text = onSelector ? tapSelector.getText()
+                                 : "Tap " + juce::String (selectedTap + 1) + focusedTapControlValue();
+    const auto id = ++tapSwitchAnnouncement;
+
+    juce::Timer::callAfterDelay (100, [safeThis = juce::Component::SafePointer<AstralayEditor> (this), text, id]
+    {
+        // Only the last of a run of quick switches is spoken.
+        if (safeThis != nullptr && safeThis->tapSwitchAnnouncement == id)
+            safeThis->announcer.announce (text);
+    });
+   #else
+    // The tap selector reads out its own new value, so the number is only announced elsewhere.
+    // It doesn't interrupt, so the focused control's value for the new tap follows it.
     if (! onSelector)
         announcer.announce ("Tap " + juce::String (tapIndex + 1), false);
 
@@ -510,7 +532,22 @@ void AstralayEditor::switchToTap (int tapIndex)
     if (onSelector)
         if (auto* handler = tapSelector.getAccessibilityHandler())
             handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+   #endif
 }
+
+#if JUCE_MAC
+juce::String AstralayEditor::focusedTapControlValue() const
+{
+    if (tapEnabled.hasKeyboardFocus (true))
+        return tapEnabled.getToggleState() ? ", on" : ", off";
+
+    for (auto& row : sliderRows)
+        if (row->perTap && row->slider.hasKeyboardFocus (true))
+            return ", " + row->slider.getTextFromValue (row->slider.getValue());
+
+    return {};
+}
+#endif
 
 void AstralayEditor::toggleSelectedTap()
 {

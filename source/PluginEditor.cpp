@@ -70,6 +70,23 @@ namespace
 
         return specs;
     }
+
+    /** Shows a menu with its first item already highlighted.
+
+        JUCE gives the first item accessibility focus when a menu opens but leaves nothing
+        highlighted, so the first arrow press only highlights the item that already has focus
+        and a screen reader says nothing. Highlighting it straight away, as JUCE does for its
+        own sub-menus, keeps the two in step.
+    */
+    void showMenu (juce::PopupMenu& menu, juce::Component& target, std::function<void (int)> callback)
+    {
+        auto* previousModal = juce::Component::getCurrentlyModalComponent();
+
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target), std::move (callback));
+
+        if (auto* window = juce::Component::getCurrentlyModalComponent(); window != nullptr && window != previousModal)
+            window->keyPressed (juce::KeyPress (juce::KeyPress::downKey));
+    }
 }
 
 //==============================================================================
@@ -628,8 +645,7 @@ void AstralayEditor::showLoadMenu()
     menu.addSubMenu ("Factory presets", factoryMenu);
     menu.addItem (fromFileItemId, "From file...");
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&loadButton),
-                        [safeThis = SafePointer<AstralayEditor> (this)] (int result)
+    showMenu (menu, loadButton, [safeThis = SafePointer<AstralayEditor> (this)] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
@@ -685,8 +701,7 @@ void AstralayEditor::showOutputClipMenu (juce::Component& target)
     for (int i = 0; i < (int) items.size(); ++i)
         menu.addItem (i + 1, items[(size_t) i], true, i == current);
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
-                        [safeThis = SafePointer<AstralayEditor> (this)] (int result)
+    showMenu (menu, target, [safeThis = SafePointer<AstralayEditor> (this)] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
@@ -708,8 +723,7 @@ void AstralayEditor::showPitchModeMenu (juce::Component& target)
     for (int i = 0; i < choices.size(); ++i)
         menu.addItem (i + 1, choices[i], true, i == current);
 
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
-                        [safeThis = SafePointer<AstralayEditor> (this), parameter, choices, current] (int result)
+    showMenu (menu, target, [safeThis = SafePointer<AstralayEditor> (this), parameter, choices, current] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;

@@ -27,7 +27,7 @@ ContextMenuTarget* findContextMenu (juce::Component* c);
 
 /** Tells screen reader users that the control they have moved to has a context menu, by speaking
     "has context menu" after the screen reader has read the control. It doesn't say what is in the
-    menu.
+    menu. Focus coming back to the same control, as it does when a menu closes, isn't hinted again.
 */
 class ContextMenuHint final : private juce::Timer
 {
@@ -39,10 +39,14 @@ public:
 
     static juce::String message() { return "has context menu"; }
 
+    /** True while a hint is waiting to be spoken. */
+    bool isPending() const { return isTimerRunning(); }
+
 private:
     void timerCallback() override;
 
     Announcer& announcer;
+    juce::Component::SafePointer<juce::Component> lastFocused;
 };
 
 } // namespace astralay::ui

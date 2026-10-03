@@ -310,6 +310,25 @@ public:
                 expect (astralay::ui::findContextMenu (gain) == gainMenu);
                 expect (astralay::ui::findContextMenu (mix) == nullptr);
                 expect (astralay::ui::findContextMenu (nullptr) == nullptr);
+
+                // The hint is for moving to a control, not for focus coming back to it from a menu.
+                astralay::ui::Announcer hintAnnouncer (ed);
+                astralay::ui::ContextMenuHint hint (hintAnnouncer);
+
+                hint.focusChanged (gain);
+                expect (hint.isPending());
+
+                hint.focusChanged (nullptr);
+                expect (! hint.isPending());
+
+                hint.focusChanged (gain);
+                expect (! hint.isPending());
+
+                hint.focusChanged (mix);
+                expect (! hint.isPending());
+
+                hint.focusChanged (gain);
+                expect (hint.isPending());
             }
 
             // Pitch probability's menu chooses the pitch mode, a parameter of the tap.

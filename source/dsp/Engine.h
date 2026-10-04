@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include "DcBlocker.h"
 #include "Smear.h"
 #include "Tap.h"
 
@@ -34,8 +35,8 @@ struct TransportInfo
     double chunkQuarters = 0.25;    // Chunk length in quarter notes when synced.
 };
 
-/** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, smear on the combined
-    repeats, dry/wet mix, output gain and the output hard clip.
+/** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, a DC blocker and smear on
+    the combined repeats, dry/wet mix, output gain and the output hard clip.
 */
 class Engine
 {
@@ -73,6 +74,7 @@ private:
     diagnostics::OutputProbe outputProbe;
 
     std::array<Tap, numTaps> taps;
+    DcBlocker leftDcBlocker, rightDcBlocker;
     Smear smear;
     GlobalSettings global;
 

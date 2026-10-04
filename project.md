@@ -34,7 +34,8 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 - A delay of a whole number of samples is read back untouched. Any other is interpolated with a 16-point windowed sinc (delays under 8 samples, which no tap time reaches, fall back to 4 points). A short feedback loop reads its own output back a hundred or more times a second, so the earlier 4-point interpolation lost treble on every pass and a frozen loop went dull within seconds.
 - A loop that keeps everything (frozen, or 100% feedback) settles on the nearest whole number of samples once its time stops gliding, so that it is read back untouched. This moves the delay by at most half a sample.
 - Each tap's output is scaled by its volume and panned into stereo.
-- The summed wet output of all taps passes through smear, then is mixed with the dry signal, then output gain is applied, then the output clip.
+- Nothing inside a frozen loop removes a constant offset: the filters are bypassed, and the pitch glitch's fades keep the signal's mean. Pitch sweeps wear a loop of a few milliseconds down to little else, held at about the loop's original level. The DC blocker keeps that from the output. It is not in the loop, where even a 5 Hz high-pass would thin a short loop over its hundreds of passes a second, so the offset stays in the tap and other glitches still act on it (ring modulation turns it into a tone).
+- The summed wet output of all taps passes through a DC blocker (a 6 dB per octave high-pass at 5 Hz), then smear, then is mixed with the dry signal, then output gain is applied, then the output clip.
 
 ## Taps
 

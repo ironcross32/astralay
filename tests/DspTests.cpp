@@ -72,11 +72,12 @@ namespace
 
     /** How a frozen loop changed over a run of glitches: its level and its highest peak, both
         relative to the level before the glitches began, and how much its treble changed, measured
-        by how far the signal moves from one sample to the next.
+        by how far the signal moves from one sample to the next. offset is the constant offset the
+        output ends up sitting on, also relative to the level before.
     */
     struct LoopChange
     {
-        float level = 0.0f, peak = 0.0f, treble = 0.0f;
+        float level = 0.0f, peak = 0.0f, treble = 0.0f, offset = 0.0f;
 
         juce::String describe() const
         {
@@ -154,6 +155,13 @@ namespace
         for (size_t i = glitchAt; i < left.size(); ++i)
             change.peak = juce::jmax (change.peak, std::abs (left[i]) / before);
 
+        auto sum = 0.0;
+
+        for (size_t i = left.size() - 24000; i < left.size(); ++i)
+            sum += left[i];
+
+        change.offset = (float) std::abs (sum / 24000.0) / before;
+
         return change;
     }
 
@@ -183,11 +191,12 @@ public:
             const auto [left, right] = run (engine, input);
             const auto centre = std::cos (juce::MathConstants<float>::pi * 0.25f);
 
-            // The feedback filters don't touch the direct output, so the echo is a clean impulse.
+            // The feedback filters don't touch the direct output, so the echo is a clean impulse. The
+            // DC blocker leaves a slow tail after it, under a thousandth of its height.
             expectWithinAbsoluteError (left[100], centre, 1.0e-5f);
             expectWithinAbsoluteError (right[100], centre, 1.0e-5f);
             expectWithinAbsoluteError (left[99], 0.0f, 1.0e-6f);
-            expectWithinAbsoluteError (left[101], 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (left[101], 0.0f, 1.0e-3f);
         }
 
         beginTest ("Feedback scales each repeat");
@@ -231,8 +240,9 @@ public:
             const auto first = rms (left, 4800, 480);
             const auto fourth = rms (left, 19200, 480);
 
+            // Between repeats there is only the DC blocker's tail from the repeat before.
             expectWithinAbsoluteError (fourth / first, 1.0f, 0.02f);
-            expectWithinAbsoluteError (rms (left, 12000 + 4800, 480), 0.0f, 1.0e-4f);
+            expectWithinAbsoluteError (rms (left, 12000 + 4800, 480), 0.0f, 1.0e-3f);
         }
 
         beginTest ("Constant-power pan: hard left silences the right channel");
@@ -423,9 +433,10 @@ public:
 
                 // About 80 glitches in ten seconds, one straight after another, each many trips round
                 // the 7 ms loop. Unchecked, the cepstral shifter raised this loop by tens of decibels.
-                // Some level is still lost to that much reshaping, and sweeps wear the loop down too.
+                // Some level is still lost to that much reshaping. Sweeps wear the loop down to little
+                // but a constant offset, which doesn't reach the output, so with them there is no floor.
                 const auto level = rms (left, 48000 * 9, 48000) / rms (left, 9600, 4800);
-                const auto floor = types.size() > 1 ? 0.05f : 0.25f;
+                const auto floor = types.size() > 1 ? 0.0f : 0.25f;
                 expect (level > floor && level < 1.5f, "Level changed by a factor of " + juce::String (level));
             }
         }
@@ -538,6 +549,29 @@ public:
 
                 const auto up = sentTo (7.0f), down = sentTo (-7.0f);
                 expect (up.treble > 1.15f * down.treble, glitchName + " up: " + up.describe() + "; down: " + down.describe());
+            }
+        }
+
+        beginTest ("A frozen loop worn down to a constant offset doesn't send that offset to the output");
+        {
+            // Pitch sweeps wear a short loop down to its mean, which the level-keeping fades then
+            // hold at about the loop's original level. Loops of 1 ms and 7 ms.
+            for (const auto delay : { 48.0f, 336.0f })
+            {
+                for (const auto seed : { 3, 7 })
+                {
+                    TapGlitchSettings glitch;
+                    glitch.probability[(size_t) GlitchType::pitch] = 1.0f;
+
+                    juce::Random random (11);
+                    const auto change = runFrozenLoop (delay, seed, 20.0, glitch,
+                                                       [&random] (size_t) { return 0.5f * (random.nextFloat() - 0.5f); });
+
+                    const auto message = "Loop of " + juce::String (delay) + " samples, seed " + juce::String (seed) + ": " + change.describe()
+                                             + ", offset " + juce::String (change.offset) + " times the level before";
+
+                    expect (change.offset < 0.01f, message);
+                }
             }
         }
 

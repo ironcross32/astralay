@@ -18,6 +18,8 @@ void Engine::prepare (double newSampleRate, int, double maxDelaySeconds)
     for (auto& tap : taps)
         tap.prepare (sampleRate, maxDelaySamples);
 
+    leftDcBlocker.prepare (sampleRate);
+    rightDcBlocker.prepare (sampleRate);
     smear.prepare (sampleRate, maxSmearSeconds);
     freeze.reset (sampleRate, freezeCrossfadeSeconds);
 
@@ -71,6 +73,8 @@ void Engine::reset()
 
     freeze.setCurrentAndTargetValue (global.freeze ? 1.0f : 0.0f);
     setGlobalSettings (global);
+    leftDcBlocker.reset();
+    rightDcBlocker.reset();
     smear.reset();
 
     for (auto* s : { &dryGain, &wetGain, &outputGain })
@@ -125,6 +129,9 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
         for (auto& tap : taps)
             if (! tap.isIdle())
                 tap.process (mono, frozen, wetLeft, wetRight);
+
+        wetLeft = leftDcBlocker.process (wetLeft);
+        wetRight = rightDcBlocker.process (wetRight);
 
         smear.process (wetLeft, wetRight);
 

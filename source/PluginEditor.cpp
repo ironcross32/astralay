@@ -406,9 +406,15 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
     const auto mods = key.getModifiers();
 
    #if JUCE_MAC
-    const auto groupModifier = mods.isCommandDown() && ! mods.isAltDown() && ! mods.isShiftDown();
+    if (juce::Component::getCurrentlyFocusedComponent() == nullptr && handleKeyWithoutFocus (key))
+        return true;
+
+    // Hosts keep Cmd+comma and Cmd+period for themselves, so the group keys use Option.
+    const auto groupModifier = mods.isAltDown() && ! mods.isCommandDown() && ! mods.isCtrlDown() && ! mods.isShiftDown();
+    const auto freezeModifier = mods.isCommandDown() && ! mods.isAltDown() && ! mods.isShiftDown();
    #else
     const auto groupModifier = mods.isAltDown() && ! mods.isCtrlDown() && ! mods.isShiftDown();
+    const auto freezeModifier = groupModifier;
    #endif
 
     if (groupModifier)
@@ -452,7 +458,7 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
     if (performancePad.hasKeyboardFocus (true))
         return false;
 
-    if (groupModifier && (key.getKeyCode() == 'f' || key.getKeyCode() == 'F'))
+    if (freezeModifier && (key.getKeyCode() == 'f' || key.getKeyCode() == 'F'))
     {
         toggleAndAnnounce (params::global::freeze, "Freeze");
         return true;
@@ -813,6 +819,52 @@ void AstralayEditor::jumpToGroup (int direction)
     if (auto* first = traverser.getDefaultComponent (groups[(size_t) next]))
         first->grabKeyboardFocus();
 }
+
+#if JUCE_MAC
+bool AstralayEditor::handleKeyWithoutFocus (const juce::KeyPress& key)
+{
+    auto* peer = getPeer();
+
+    if (peer == nullptr)
+        return false;
+
+    const auto mods = key.getModifiers();
+    const auto isTab = key.isKeyCode (juce::KeyPress::tabKey) && ! mods.isCommandDown() && ! mods.isCtrlDown() && ! mods.isAltDown();
+    const auto forwards = ! mods.isShiftDown();
+
+    auto* last = peer->getLastFocusedSubcomponent();
+
+    if (last == nullptr || last == this || ! isParentOf (last) || ! last->getWantsKeyboardFocus())
+    {
+        // Nothing has had focus yet, so Tab starts from the nearest end.
+        if (! isTab)
+            return false;
+
+        const auto stops = juce::KeyboardFocusTraverser().getAllComponents (this);
+
+        if (stops.empty())
+            return false;
+
+        (forwards ? stops.front() : stops.back())->grabKeyboardFocus();
+        return true;
+    }
+
+    last->grabKeyboardFocus();
+
+    auto* focused = juce::Component::getCurrentlyFocusedComponent();
+
+    if (focused == nullptr || ! isParentOf (focused))
+        return false;
+
+    if (isTab)
+    {
+        focused->moveKeyboardFocusToSibling (forwards);
+        return true;
+    }
+
+    return focused->keyPressed (key);
+}
+#endif
 
 void AstralayEditor::announce (const juce::String& text)
 {

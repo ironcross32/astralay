@@ -119,6 +119,16 @@ private:
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
     void jumpToGroup (int direction);
 
+   #if JUCE_MAC
+    /** Handles a key that arrives while no control has keyboard focus. JUCE drops the focused
+        control when the host's window stops being the key window and doesn't restore it when the
+        window becomes key again, although the keys keep arriving, and Tab does nothing without a
+        focused control to move from. This puts focus back where it was and passes the key on.
+        Returns true if the key was used.
+    */
+    bool handleKeyWithoutFocus (const juce::KeyPress& key);
+   #endif
+
     static void layoutColumn (juce::Rectangle<int> area, const std::vector<LayoutItem>& items,
                               int rowHeight, int gap, float labelFraction);
 

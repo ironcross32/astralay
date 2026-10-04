@@ -192,8 +192,8 @@ Every control has a help tag of one or two plain sentences describing what it do
 ### Keyboard
 
 Keyboard shortcuts, Windows / macOS:
-- Next group: ALT+. / CMD+. (fall back to OPTION only if hosts turn out to swallow CMD)
-- Previous group: ALT+, / CMD+,
+- Next group: ALT+. / OPTION+. (hosts keep CMD+, and CMD+. for themselves)
+- Previous group: ALT+, / OPTION+,
 - Undo: CTRL+Z / CMD+Z
 - Redo: CTRL+SHIFT+Z / CMD+SHIFT+Z
 - Save: CTRL+S / CMD+S

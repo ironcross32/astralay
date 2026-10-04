@@ -30,8 +30,8 @@ Controls are arranged in four groups: Main, Tap *number*, Global, and Performanc
 | --- | --- | --- |
 | Next control | Tab | Tab |
 | Previous control | Shift+Tab | Shift+Tab |
-| Next group | Alt+Period | Cmd+Period |
-| Previous group | Alt+Comma | Cmd+Comma |
+| Next group | Alt+Period | Option+Period |
+| Previous group | Alt+Comma | Option+Comma |
 | Increase or decrease a slider | Arrow keys | Arrow keys |
 | Fine adjustment | Shift+Arrow keys | Shift+Arrow keys |
 | Coarse adjustment | Ctrl+Arrow keys | Cmd+Arrow keys |

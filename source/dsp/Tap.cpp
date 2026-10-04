@@ -59,7 +59,7 @@ void Tap::setSettings (const TapSettings& s, float glideSeconds, const GlitchGlo
 
     baseDelay = s.delaySamples;
 
-    const auto target = scaledDelay();
+    const auto target = (double) scaledDelay();
     const auto wasIdle = idle;
 
     if (s.enabled != enabled)
@@ -108,7 +108,7 @@ void Tap::process (float input, float freeze, float& left, float& right) noexcep
     if (const auto scale = glitches.getDelayScale(); ! juce::exactlyEqual (scale, delayScale))
     {
         delayScale = scale;
-        delay.setTargetValue (scaledDelay());
+        delay.setTargetValue ((double) scaledDelay());
     }
 
     const auto fade = enabledGain.getNextValue();
@@ -118,12 +118,13 @@ void Tap::process (float input, float freeze, float& left, float& right) noexcep
     // A loop that keeps everything settles on a whole number of samples, which the delay line
     // reads back untouched. Between samples it has to interpolate, and even a good interpolator
     // takes a little off the top on each of the many passes such a loop makes.
-    auto delaySamples = delay.getNextValue();
+    auto delayPosition = delay.getNextValue();
 
     if (loopGain > 0.999f && ! delay.isSmoothing())
-        delaySamples = std::round (delaySamples);
+        delayPosition = std::round (delayPosition);
 
-    const auto delayed = line.read (delaySamples);
+    const auto delayed = line.read (delayPosition);
+    const auto delaySamples = (float) delayPosition;
 
     glitches.setLoop (delaySamples, loopGain);
     const auto glitched = glitches.process (delayed);

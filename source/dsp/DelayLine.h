@@ -40,12 +40,15 @@ public:
 
     float getMaxDelay() const noexcept { return maxDelay; }
 
-    /** Reads the sample delaySamples ago. The delay is clamped to [minDelaySamples, getMaxDelay()]. */
-    float read (float delaySamples) const noexcept
+    /** Reads the sample delaySamples ago. The delay is clamped to [minDelaySamples, getMaxDelay()].
+        It is a double because a float holds a delay of several seconds only to a few hundredths of
+        a sample, too coarse for a slow glide.
+    */
+    float read (double delaySamples) const noexcept
     {
-        const auto d = juce::jlimit (minDelaySamples, maxDelay, delaySamples);
+        const auto d = juce::jlimit ((double) minDelaySamples, (double) maxDelay, delaySamples);
         const auto whole = (int) d;
-        const auto fraction = d - (float) whole;
+        const auto fraction = (float) (d - (double) whole);
 
         if (fraction <= 0.0f)
             return at (writeIndex - whole);

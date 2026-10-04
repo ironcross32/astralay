@@ -42,7 +42,7 @@ public:
     */
     void onChunkBoundary (float freeze)
     {
-        glitches.setLoop (delay.getCurrentValue(), loopGainFor (feedback.getCurrentValue(), freeze));
+        glitches.setLoop ((float) delay.getCurrentValue(), loopGainFor (feedback.getCurrentValue(), freeze));
         glitches.onChunkBoundary();
     }
 
@@ -80,7 +80,9 @@ private:
     bool glitchesHeard = false;
     juce::dsp::StateVariableTPTFilter<float> lowCut, highCut;
 
-    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> delay;
+    // In double precision: on a long tap, one sample's share of a glide is too small for a float
+    // to add to the delay, which then stays put and jumps at the end of the glide.
+    juce::SmoothedValue<double, juce::ValueSmoothingTypes::Linear> delay;
     juce::SmoothedValue<float> gain, feedback, leftGain, rightGain, enabledGain;
 
     double sampleRate = 44100.0;

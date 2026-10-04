@@ -552,6 +552,55 @@ public:
             }
         }
 
+        beginTest ("A long tap glides to a new time smoothly");
+        {
+            // A 5 second tap moved by 10 ms over 2 seconds, and by 1 ms over 100 ms. Each sample's
+            // share of the move is smaller than single precision can add to a delay that long: the
+            // first stayed put and then jumped the whole way, the second overshot and snapped back.
+            for (const auto& [move, glideSeconds] : { std::pair { 480.0f, 2.0f }, std::pair { 48.0f, 0.1f } })
+            {
+                auto global = wetOnly();
+                global.glideSeconds = glideSeconds;
+
+                auto tap = singleTap (240000.0f, 0.0f);
+
+                Engine engine;
+                engine.prepare (testSampleRate, blockSize, 10.0);
+                engine.setGlobalSettings (global);
+                engine.setTapSettings (0, tap);
+                engine.reset();
+
+                std::vector<float> left (48000 * 9), right (left.size(), 0.0f);
+
+                for (size_t i = 0; i < left.size(); ++i)
+                    left[i] = 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 50.0 * (double) i / testSampleRate);
+
+                for (size_t start = 0; start < left.size(); start += blockSize)
+                {
+                    if (start == (size_t) blockSize * 1100)
+                    {
+                        tap.delaySamples += move;
+                        engine.setTapSettings (0, tap);
+                    }
+
+                    const auto n = (int) std::min ((size_t) blockSize, left.size() - start);
+                    engine.process (left.data() + start, nullptr, left.data() + start, right.data() + start, n);
+                }
+
+                // The 50 Hz sine comes back bent slightly by the glide but with no jump in it.
+                auto biggest = 0.0f;
+
+                for (size_t i = 264000; i + 1 < left.size(); ++i)
+                    biggest = juce::jmax (biggest, std::abs (left[i + 1] - left[i]));
+
+                const auto steady = 0.5f * juce::MathConstants<float>::twoPi * 50.0f / (float) testSampleRate
+                                        * std::cos (juce::MathConstants<float>::pi * 0.25f);
+
+                expect (biggest < 1.01f * steady, "Moved " + juce::String (move) + " samples over " + juce::String (glideSeconds)
+                                                      + " s: biggest step " + juce::String (biggest / steady) + " times a steady sine's");
+            }
+        }
+
         beginTest ("A frozen loop worn down to a constant offset doesn't send that offset to the output");
         {
             // Pitch sweeps wear a short loop down to its mean, which the level-keeping fades then

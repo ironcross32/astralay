@@ -69,11 +69,11 @@ public:
             for (auto* c : stops)
                 titles.add (titleOf (*c));
 
-            // Main 5, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), global 15,
-            // performance 1.
-            expectEquals ((int) stops.size(), 62);
+            // Main 5, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
+            // each of the 8 macros, global 15, performance 1.
+            expectEquals ((int) stops.size(), 78);
 
-            if (stops.size() != 62)
+            if (stops.size() != 78)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
             const juce::StringArray expectedStart { "Undo", "Redo", "Save", "Load", "Preset: Init",
@@ -286,6 +286,107 @@ public:
 
             ed.keyPressed (juce::KeyPress ('y', command, 0));
             expect (valueOf (processor, global::sync) < 0.5f);
+        }
+
+        beginTest ("The arming shortcut takes a number for the macro");
+        {
+           #if JUCE_MAC
+            const juce::KeyPress armKey ('m', juce::ModifierKeys::commandModifier, 0);
+           #else
+            const juce::KeyPress armKey ('m', juce::ModifierKeys::altModifier, 0);
+           #endif
+
+            const auto armed = [&ed] (int number) { return findByTitle (ed, "Disarm Macro " + juce::String (number)) != nullptr; };
+            const auto tapBefore = processor.getSelectedTap();
+
+            expect (ed.keyPressed (armKey));
+            expect (ed.keyPressed (juce::KeyPress ('3')));
+            expect (armed (3));
+
+            // Arming another disarms the first, and a held shortcut's repeats aren't the next key.
+            ed.keyPressed (armKey);
+            ed.keyPressed (armKey);
+            ed.keyPressed (juce::KeyPress (juce::KeyPress::numberPad5));
+            expect (armed (5) && ! armed (3));
+
+            // The same number disarms it.
+            ed.keyPressed (armKey);
+            ed.keyPressed (juce::KeyPress ('5'));
+            expect (! armed (5));
+
+            // 0 disarms whichever is armed, and does nothing when none is.
+            ed.keyPressed (armKey);
+            ed.keyPressed (juce::KeyPress ('8'));
+            expect (armed (8));
+
+            ed.keyPressed (armKey);
+            ed.keyPressed (juce::KeyPress ('0'));
+            expect (! armed (8));
+
+            ed.keyPressed (armKey);
+            expect (ed.keyPressed (juce::KeyPress ('0')));
+
+            // Any other key cancels and is used up, and the key after it means what it usually does.
+            ed.keyPressed (armKey);
+            expect (ed.keyPressed (juce::KeyPress ('9')));
+            ed.keyPressed (armKey);
+            expect (ed.keyPressed (juce::KeyPress (juce::KeyPress::tabKey)));
+
+            for (int m = 1; m <= numMacros; ++m)
+                expect (! armed (m));
+
+            expectEquals (processor.getSelectedTap(), tapBefore);
+
+            ed.keyPressed (juce::KeyPress ('2'));
+            expectEquals (processor.getSelectedTap(), 1);
+            expect (! armed (2));
+
+            ed.keyPressed (juce::KeyPress ('1'));
+        }
+
+        beginTest ("A key layer takes one key and then closes");
+        {
+            astralay::ui::Announcer layerAnnouncer (ed);
+            astralay::ui::KeyLayer layer (layerAnnouncer);
+            const juce::KeyPress opener ('k', juce::ModifierKeys::altModifier, 0);
+            juce::Array<int> taken;
+
+            const auto open = [&]
+            {
+                layer.open (opener, "Which?", [&taken] (const juce::KeyPress& key)
+                {
+                    taken.add (key.getKeyCode());
+                    return key.getKeyCode() == 'a';
+                });
+            };
+
+            expect (! layer.isOpen());
+            expect (! layer.handleKey (juce::KeyPress ('a')));
+
+            open();
+            expect (layer.isOpen());
+            expect (layer.handleKey (opener));
+            expect (layer.isOpen());
+
+            expect (layer.handleKey (juce::KeyPress ('a')));
+            expect (! layer.isOpen());
+
+            // A key that isn't the layer's is used up all the same.
+            open();
+            expect (layer.handleKey (juce::KeyPress ('b')));
+            expect (! layer.isOpen());
+            expect (taken == juce::Array<int> { 'a', 'b' });
+
+            open();
+            layer.close();
+            expect (! layer.handleKey (juce::KeyPress ('a')));
+
+            using astralay::ui::digitForKey;
+            expectEquals (digitForKey (juce::KeyPress ('0')), 0);
+            expectEquals (digitForKey (juce::KeyPress ('9')), 9);
+            expectEquals (digitForKey (juce::KeyPress (juce::KeyPress::numberPad7)), 7);
+            expectEquals (digitForKey (juce::KeyPress ('4', juce::ModifierKeys::shiftModifier, '$')), -1);
+            expectEquals (digitForKey (juce::KeyPress ('a')), -1);
         }
 
         beginTest ("Output gain has a context menu, offered to screen readers as an action");

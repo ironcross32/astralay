@@ -15,6 +15,7 @@ namespace colours
     inline const juce::Colour dimText      { 0xffd0d0d0 };
     inline const juce::Colour sliderTrack  { 0xff2a2a2a };
     inline const juce::Colour sliderFill   { 0xff1f6fb2 };
+    inline const juce::Colour modulationFill { 0xff8a3fb2 };   // A slider that is setting a macro's amount.
     inline const juce::Colour accent       { 0xffffd400 };   // Focus outline.
     inline const juce::Colour button       { 0xff2a2a2a };
 }
@@ -22,7 +23,7 @@ namespace colours
 /** Sizes in the editor's base coordinate space (scaled with the window). */
 namespace sizes
 {
-    constexpr int baseWidth = 1200;
+    constexpr int baseWidth = 1440;
     constexpr int baseHeight = 976;
     constexpr float textHeight = 17.0f;
     constexpr float headingHeight = 19.0f;

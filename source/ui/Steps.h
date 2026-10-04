@@ -17,6 +17,7 @@ struct StepContext
     bool isInteger = false;     // Int parameters: steps are whole numbers.
     bool isNoteValue = false;   // Choice among note values: steps move through the list.
     int firstNoteIndex = 0;     // For note values: index into NoteValues::all() of choice 0.
+    bool isOffset = false;      // An amount added to a value: frequencies step by 10 / 1 / 100 Hz.
 };
 
 /** Returns the value one keyboard step from current in the given direction (+1 or -1),

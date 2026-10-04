@@ -209,6 +209,10 @@ void History::setValue (int parameterIndex, float normalisedValue)
 
 void History::applySnapshot (const Snapshot& snapshot)
 {
+    // First, since the macro settings decide what the macros' values mean.
+    if (onSnapshotApplied != nullptr)
+        onSnapshotApplied (snapshot);
+
     {
         const juce::ScopedValueSetter<bool> applyingChange (applying, true);
 
@@ -228,9 +232,6 @@ void History::applySnapshot (const Snapshot& snapshot)
             }
         }
     }
-
-    if (onSnapshotApplied != nullptr)
-        onSnapshotApplied (snapshot);
 }
 
 juce::String History::announcementFor (const juce::String& verb, const juce::String& transactionName) const

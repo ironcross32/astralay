@@ -82,10 +82,12 @@ target_sources(Astralay
         source/PluginEditor.cpp
         source/state/DiagnosticLog.cpp
         source/state/History.cpp
+        source/state/Macros.cpp
         source/state/Presets.cpp
         source/ui/Announcer.cpp
         source/ui/ContextMenu.cpp
         source/ui/HelpText.cpp
+        source/ui/KeyLayer.cpp
         source/ui/ParameterControls.cpp
         source/ui/PerformancePad.cpp
         source/ui/Theme.cpp)
@@ -142,16 +144,19 @@ if(ASTRALAY_BUILD_TESTS)
             tests/FormantTests.cpp
             tests/SmearTests.cpp
             tests/StateTests.cpp
+            tests/MacroTests.cpp
             tests/Benchmark.cpp
             tests/DiagnosticsTests.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp
             source/state/DiagnosticLog.cpp
             source/state/History.cpp
+            source/state/Macros.cpp
             source/state/Presets.cpp
             source/ui/Announcer.cpp
             source/ui/ContextMenu.cpp
             source/ui/HelpText.cpp
+            source/ui/KeyLayer.cpp
             source/ui/ParameterControls.cpp
             source/ui/PerformancePad.cpp
             source/ui/Theme.cpp)

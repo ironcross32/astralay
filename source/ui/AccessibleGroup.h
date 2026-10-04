@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include "ContextMenu.h"
 #include "Theme.h"
 
 namespace astralay::ui
@@ -11,8 +12,12 @@ namespace astralay::ui
     container but not a keyboard focus container.
 
     Children are placed in focus order in the order they are added with addInOrder().
+
+    A group can have a context menu, which then also opens from the controls inside it that have
+    none of their own.
 */
-class AccessibleGroup final : public juce::Component
+class AccessibleGroup final : public juce::Component,
+                              public ContextMenuTarget
 {
 public:
     explicit AccessibleGroup (const juce::String& title, bool drawFrame = true)
@@ -37,6 +42,29 @@ public:
                      : getLocalBounds();
     }
 
+    /** Gives the group a context menu: show is called to open it. */
+    void setContextMenu (std::function<void()> show)
+    {
+        showMenu = std::move (show);
+
+        // The handler's actions are fixed when it is made.
+        invalidateAccessibilityHandler();
+    }
+
+    bool hasContextMenu() const override { return showMenu != nullptr; }
+
+    void showContextMenu() override
+    {
+        if (showMenu != nullptr)
+            showMenu();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu())
+            showContextMenu();
+    }
+
     void paint (juce::Graphics& g) override
     {
         if (! frame)
@@ -54,12 +82,18 @@ public:
 
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override
     {
-        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::group);
+        juce::AccessibilityActions actions;
+
+        if (hasContextMenu())
+            actions.addAction (juce::AccessibilityActionType::showMenu, [this] { showContextMenu(); });
+
+        return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::group, actions);
     }
 
 private:
     bool frame;
     int lastFocusOrder = 0;
+    std::function<void()> showMenu;
 };
 
 } // namespace astralay::ui

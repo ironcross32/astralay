@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <deque>
 #include "dsp/Engine.h"
 #include "params/Parameters.h"
 #include "state/DiagnosticLog.h"
@@ -112,6 +113,28 @@ public:
     */
     bool stepSmear (bool amount, int direction, bool mergeWithPrevious);
 
+    /** The macros' names, whether each is bipolar and what each moves. Saved with the session and
+        in presets. Their values are parameters.
+    */
+    astralay::state::MacroSettings getMacros() const;
+
+    /** Sent on the message thread whenever the macro settings change. */
+    juce::ChangeBroadcaster& getMacroChanges() noexcept { return macroChanges; }
+
+    /** Each of these is one undoable step. An empty name restores the macro's default one.
+        Switching between unipolar and bipolar keeps the macro's value, or brings it up to 0 if
+        it is negative when the macro becomes unipolar.
+    */
+    void renameMacro (int macroIndex, const juce::String& name);
+    void setMacroBipolar (int macroIndex, bool bipolar);
+
+    /** Sets how far a macro moves a parameter, in the parameter's own unit and held to the width
+        of its range either way; 0 removes the modulation. Does nothing if the macro can't move
+        that parameter. A run of these for the same macro and parameter in quick succession is
+        one undo step.
+    */
+    void setModulation (int macroIndex, const juce::String& parameterId, float amount);
+
 private:
     struct TapParameters
     {
@@ -185,15 +208,57 @@ private:
         double ppq = 0.0;
     };
 
+    /** A parameter that macros can move. The engine reads value, which is the parameter's own
+        value moved by whatever macros modulate it.
+    */
+    struct ModulatedValue
+    {
+        juce::RangedAudioParameter* parameter = nullptr;
+        std::atomic<float>* source = nullptr;
+        std::atomic<float> value { 0.0f };
+        float offset = 0.0f;   // Audio thread only.
+    };
+
+    /** One modulation, as the audio thread uses it. */
+    struct Route
+    {
+        int macro = 0, target = 0;   // target is an index into modulatedValues.
+        float amount = 0.0f;
+    };
+
     HostInfo readHost() const;
+    void updateModulatedValues();
     void updateEngineSettings();
     void setPresetInfo (const juce::String& name, bool modified);
     juce::String applyPreset (const astralay::state::History::Snapshot& preset);
+
+    astralay::state::History::Snapshot captureSnapshot() const;
+    void applyMacros (const astralay::state::MacroSettings& settings);
+
+    /** Changes the macro settings, and any parameter values given, as one undoable step. */
+    void editMacros (const astralay::state::MacroSettings& settings, const juce::String& description,
+                     bool mergeWithPrevious = false, const std::map<juce::String, float>& values = {});
 
     juce::AudioProcessorValueTreeState state;
     astralay::state::History history { *this };
     std::array<TapParameters, astralay::params::numTaps> tapParameters;
     GlobalParameters globalParameters;
+
+    std::array<astralay::params::MacroParameter*, astralay::params::numMacros> macroParameters {};
+    astralay::state::MacroSettings macros;
+    juce::CriticalSection macroLock;
+    juce::ChangeBroadcaster macroChanges;
+
+    std::deque<ModulatedValue> modulatedValues;
+    std::map<juce::String, int> modulatedIndices;   // By parameter ID.
+
+    // The message thread leaves new routes in pendingRoutes; the audio thread swaps them in.
+    std::vector<Route> pendingRoutes, activeRoutes;
+    juce::SpinLock routeLock;
+    std::atomic<bool> routesChanged { false };
+
+    juce::String lastModulationEdit;
+    juce::uint32 lastModulationEditTime = 0;
 
     /** For each synced stutter slice choice, its index in NoteValues::all(). */
     std::vector<int> stutterNoteIndices;

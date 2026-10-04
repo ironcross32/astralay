@@ -128,22 +128,37 @@ Output:
 - Output gain: -24 dB to +12 dB, default -3 dB.
 - Output clip: "+18 dBFS" (default), "0 dBFS" or "Off". A hard clip on the final output, after output gain, so that glitches piling up in a frozen loop cannot push the level to where a host mutes the track (Reaper mutes above +18 dBFS). The +18 dBFS ceiling sits about 0.001 dB under +18, so rounding cannot carry a clipped peak over that limit. It is not a parameter: it cannot be automated, is not part of a preset (loading one leaves it alone) and is not undoable. It is saved with the host session, per plugin instance. It has no control of its own: it is set from the output gain control's context menu.
 
+## Macros
+
+There are 8 macros. Each has a value and moves any number of other parameters by it.
+
+- A macro's value is a parameter ("Macro 1" to "Macro 8", IDs `macro1` to `macro8`), so it can be automated or mapped to a hardware control. It runs from 0 to 1 in unipolar mode, the default, and from -1 to 1 in bipolar mode. Either way the whole range is spread over the parameter's full travel, so a host's knob or automation lane always uses all of it; the cost is that existing automation of a macro means something different after its mode is switched. The default value is 0 in both modes.
+- Switching mode keeps the macro's value, except that a negative value comes up to 0 when the macro becomes unipolar.
+- A macro can be renamed, up to 64 characters. The host sees the new name as the parameter's name. An empty name, or the default one, restores "Macro 3".
+- A modulation is one parameter a macro moves, with an amount in that parameter's own unit: milliseconds for a time, decibels for a volume, percent for a feedback, and so on. The macro's value times the amount is added to the parameter's value, so an amount of 200 ms makes a time 200 ms longer when the macro is at 1, wherever the time is set. The amount can be up to the width of the parameter's range either way: -4999 ms to 4999 ms for a time of 1 ms to 5 s, 200 left to 200 right for a pan. Bit depths move by whole bits. The result is held within the parameter's range.
+- Host sync, as Surge XT does it: a time (a tap's time, a stutter's shortest and longest slice) has one modulation, which holds whether or not host sync is on. While it is on, the note value that takes the time's place moves by the same share of its own range as the amount is of the time's range, and lands on the nearest note value; there is no modulating by part of a note value. The note-value parameters can't be given modulations of their own. Several macros can move one parameter; their contributions add up. An amount of 0 is no modulation, and setting one to 0 removes it.
+- Modulation is applied in the processor once per audio block, to the value the engine reads. The parameter itself, its slider and what the host sees don't move.
+- A macro can move every parameter that has a slider, except the glitch engine's (threshold, buffer size, maximum simultaneous glitches, glitch lengths, seed), the output gain and the macros' own values. On/off parameters and the two choices (glitch placement, pitch mode) can't be moved.
+- The names, modes and modulations are not parameters. They are saved with the host session and in presets, and changing them is undoable.
+
 ## Presets and state
 
 - Factory presets are built into the plugin binary. User presets are saved to disk. The two are never written to the same place.
 - Factory presets are defined in code (`source/state/Presets.cpp`) as settings that differ from the defaults, written as the text a user would type ("250 ms", "1/8 dotted"). The starter set: Init, Slapback, Ping pong, Rhythmic scatter, Frozen grains, Robot choir.
 - Preset files hold every parameter's value in its own units, keyed by parameter ID. Parameters the file doesn't contain take their defaults; parameters the plugin doesn't know are ignored. A loaded preset takes its name from the file name.
+- Preset files also hold the macro settings, in a `Macros` element: each macro's name, whether it is bipolar and its modulations (parameter ID and amount, in the parameter's unit). Macros left at their defaults are omitted, and a file without the element gives every macro its defaults, as do the factory presets. Loading a preset replaces the macro settings.
 - Saving, loading and errors are announced ("Saved My Preset", "Loaded Slapback", "Could not load ... It isn't an Astralay preset.").
 - User presets are stored in `%userprofile%\Documents\Astralay\Presets` on Windows and `~/Documents/Astralay/Presets` on macOS.
 - Preset files are XML with a version attribute and the extension `.astralay`. When loading a preset from an older version, any missing parameter takes its default value.
 - Save opens a native OS save dialog in the user preset folder, suggesting the current preset name.
 - Load opens a menu containing a "Factory presets" submenu and a "From file…" item, which opens a native OS open dialog in the user preset folder.
 - A new instance's preset name is "Init". When the current preset has been changed, the name label reads "<name>, modified" (a word rather than an asterisk, which screen readers often skip).
-- The host session state stores all parameters plus the currently selected tap and the output clip setting.
+- The host session state stores all parameters plus the currently selected tap, the output clip setting and the macro settings. A session saved before there were macros restores them at their defaults.
 
 ### Undo
 
-- Undo covers parameter changes, tap enable/disable, pastes, performance-area time and smear changes, and preset loads. Changing the selected tap, the performance selection and a held freeze are not undoable.
+- Undo covers parameter changes, tap enable/disable, pastes, performance-area time and smear changes, preset loads, and macro changes: renaming, switching mode, and setting, editing or clearing a modulation. Changing the selected tap, the performance selection, a held freeze and which macro is armed are not undoable.
+- A run of changes to the same modulation less than 600 ms apart joins into one step. Macro steps are announced as "Undo modulation of Tap 1 Feedback by Macro 1", "Undo rename Macro 1" and "Undo Macro 1 bipolar" (or "unipolar").
 - One slider gesture is one undo step. A run of edits to the same parameter less than 600 ms apart (such as repeated arrow presses) joins into one step.
 - Only the user's edits are recorded, recognised by their change gestures; host automation never enters the undo history or marks the preset modified.
 - Undoing a preset load restores the previous values, preset name and modified state.
@@ -151,7 +166,7 @@ Output:
 
 ## Automation
 
-- Every parameter is automatable. The tap selector is UI state and the output clip is a session setting; neither is a parameter.
+- Every parameter is automatable, the macros' values included. The tap selector is UI state and the output clip is a session setting; neither is a parameter. Nor are the macros' names, modes and modulations.
 - Parameter names must be properly labelled and reflect exactly what they change, including the tap number, for example "Tap 3 Feedback" or "Tap 3 Stutter Probability".
 
 ## UI
@@ -164,7 +179,7 @@ The window is resizable. The visual style is plain, as the plugin will mostly be
 
 It is imperative to group controls based on their function. This is vital for proper VoiceOver accessibility in macOS, as users will interact with groupings to access the controls inside. Without this, the interface appears disorganized and cluttered. It is also necessary to use JUCE-specific features to set accessibility info so help tags on VoiceOver work. Think of help tags as the screen-reader equivalent of tooltips.
 
-There are four top-level groups, in this order:
+There are five top-level groups, in this order:
 
 1. Main: Undo, Redo, Save, Load, then a read-only label showing the current preset name.
 2. Tap group, named after the selected tap (for example "Tap 3"):
@@ -177,11 +192,12 @@ There are four top-level groups, in this order:
     - Low cut
     - High cut
     - Nine nested glitch sub-groups, named after each glitch type, in processing order: Reverse, Stutter, Granularize, Pitch, LPC formant, Cepstral formant, Ring modulation, Frequency modulation, Bit crusher. Inside each, the probability comes first, followed by the range controls, each minimum before its maximum. Pitch has two pairs: minimum and maximum, then minimum speed and maximum speed.
-3. Global, with three nested sub-groups:
+3. Macros, with one nested sub-group for each of the 8 macros, named after the macro (see below). Inside each: the Arm button, then the value slider.
+4. Global, with three nested sub-groups:
     - Timing: host sync, glide time, freeze
     - Glitch engine: glitch threshold, glitch placement, buffer size, maximum simultaneous glitches, minimum glitch length, maximum glitch length, reproducible randomness, seed
     - Output: smear amount, smear size, mix, output gain (whose context menu sets the output clip)
-4. Performance: a single control, the performance area (see below).
+5. Performance: a single control, the performance area (see below).
 
 Every control in the tap group includes the tap number in its accessible name (for example "Tap 3 Feedback"), so each control identifies itself without relying on announcements.
 
@@ -200,6 +216,13 @@ Keyboard shortcuts, Windows / macOS:
 - Load: CTRL+O / CMD+O
 - Toggle host sync: CTRL+Y / CMD+Y, announcing "Host sync on" or "Host sync off"
 - Toggle freeze: ALT+F / CMD+F, announcing "Freeze on" or "Freeze off". Not available in the performance area, which has its own freeze keys.
+- Arm a macro: ALT+M / CMD+M, then a number. A layered keystroke (see below). Not available in the performance area or while typing in a field.
+
+Layered keystrokes:
+- A shortcut opens a layer, which announces a prompt and takes the next key, whichever control has focus. A key the layer knows does its job and announces the result. Any other key announces "Canceled". Either way the key is used up, so it never reaches the focused control, and the layer closes.
+- The layer closes silently if no key arrives within 2 seconds or focus moves. Repeats of the opening shortcut, from holding it down, are ignored.
+- In code this is `KeyLayer` (`source/ui/KeyLayer.h`): the editor calls `open` with the prompt and a handler for the next key.
+- ALT+M / CMD+M announces "Arm?". 1 to 8, on the number row or the number pad, arms that macro, announcing "Macro 3 armed", or disarms it if it is the armed one, announcing "Macro 3 disarmed". 0 disarms whichever macro is armed, or announces "No macro was armed". Announcements use the macro's own name if it has been renamed.
 
 - Context menu: ] on both platforms. Opens the context menu of the focused control, if it has one, and does nothing otherwise. It stands in for the applications key, which JUCE doesn't reliably receive on Windows.
 
@@ -209,9 +232,10 @@ Context menus:
 - Choosing an item announces it. The menu's current setting is ticked.
 - Output gain: "Clip at +18 dBFS", "Clip at 0 dBFS", "No clipping", setting the output clip.
 - Pitch probability: "Sweep", "Varispeed", setting the selected tap's pitch mode. This is a parameter, so choosing one is an undoable edit.
-- In code, a control gains a menu by implementing `ContextMenuTarget` (`source/ui/ContextMenu.h`); sliders take one through `setContextMenu`.
+- A macro's group: "Rename...", a "Modulations" submenu, and "Bipolar" (see Macros below). The menu belongs to the group, so it opens from both controls inside it, and "has context menu" is announced on both.
+- In code, a control gains a menu by implementing `ContextMenuTarget` (`source/ui/ContextMenu.h`); sliders and groups take one through `setContextMenu`. A control without a menu of its own opens the menu of the nearest group around it that has one.
 
-Previous and next group controls don't actually place focus on the group itself, but the first control inside said group. They move between the four top-level groups only, and wrap around, as should using the TAB key. TAB is not constrained by grouping, and navigates the interface in a flat manner.
+Previous and next group controls don't actually place focus on the group itself, but the first control inside said group. They move between the five top-level groups only, and wrap around, as should using the TAB key. TAB is not constrained by grouping, and navigates the interface in a flat manner.
 
 Taps. These work from any control except a type-in field and the performance area, and never move focus:
 - 1 to 9 and 0 switch to taps 1 to 10; SHIFT+1 to SHIFT+6 switch to taps 11 to 16. Keys are matched by position on the number row, so layouts that need SHIFT to type digits are not supported.
@@ -240,9 +264,32 @@ Sliders:
 - ENTER presents a type-in field. It accepts plain numbers in the control's own unit, optional unit suffixes (ms, s, Hz, kHz, dB, %, st), "-inf" for volume, and note values such as "1/8", "1/8d", "1/8t", "1/64" and "4 bars". ENTER accepts the value if it is valid and in range. An out-of-range or unrecognised value is rejected: the screen reader announces the valid range (for example "Out of range, 1 ms to 5 s") and the field stays open with the rejected text selected, so the user can either type over it or move into it to fix it. ESC cancels.
 - Announcements (such as type-in errors) go through the user's screen reader. On Windows this uses UI Automation notification events rather than JUCE's default, which speaks through the system voice.
 
+### Macros
+
+The Macros group sits between the tap group and Global, as a column of eight groups. Each macro's group is named after the macro and holds two controls:
+
+- Arm, a button. Its accessible name includes the macro ("Arm Macro 1"). While the macro is armed the button reads "Disarm" ("Disarm Macro 1"), and pressing it disarms the macro. Arming a macro while another is armed disarms the other first. Arming announces "Macro 1 armed" and disarming "Macro 1 disarmed". Which macro is armed belongs to the window: it isn't saved, and nothing is armed when the window opens.
+- The value slider ("Macro 1 value"), an ordinary slider on the macro's value parameter. Its steps are 0.01, fine 0.001, coarse 0.1; DELETE sets it to 0.
+
+While a macro is armed, every slider the macro can move sets that macro's amount for its parameter instead of the parameter's own value:
+
+- The slider's name becomes "<parameter>, <macro> amount", for example "Tap 3 Feedback, Macro 1 amount", and its value is the amount, in the control's own unit, or 0 where the macro doesn't move that parameter. It is drawn in a different colour.
+- Amounts read as the control's values do, with a minus sign for a negative one: "-200 ms", "1.5 s", "25%", "-3.0 dB", "+7 semitones", "3 bits". A pan amount says which way it moves the control, "30 left" or "30 right", and "0" for none.
+- While host sync is on, the sliders showing note values ("Tap 3 Synced Time, Macro 1 amount") show the time's modulation as a percentage of the range, from -100% to 100% with up to two decimal places ("71.43%"), so as not to suggest an amount in note values. It is the same modulation the slider shows in milliseconds while host sync is off: 50% is 2499.5 ms on a tap's time. The arrows step by 1%, fine 0.1%, coarse 10%, and the type-in field takes a percentage.
+- All the slider keys work as usual, on the amount: the arrows step by the control's usual steps, with the same fine and coarse steps; HOME and END go to the largest amount up and down, the width of the control's range; ENTER opens the type-in field, which takes what the control's own type-in takes. DELETE sets the amount to its default of 0, which removes the modulation, as does reaching 0 any other way.
+- Frequencies are the exception among the steps: a control in hertz steps by semitones, which mean nothing for an amount, so its amount steps by 10 Hz, fine 1 Hz, coarse 100 Hz.
+- The tap keys still switch taps, and each slider then shows the armed macro's amount for the new tap's parameter.
+- Sliders the macro can't move (the glitch engine's, the output gain and the macros' values), and every toggle and drop-down, keep working as usual.
+
+The context menu of a macro's group:
+
+- "Rename..." opens a type-in field over the macro's value slider, holding the current name. ENTER accepts, ESC cancels, and focus returns to the control the menu was opened from.
+- "Modulations" is a submenu with an item for each parameter the macro moves, in the order they were set up, named with the parameter and the amount ("Tap 3 Feedback, 25%"). It is absent when the macro moves nothing. Each item is itself a submenu: While host sync is on, a time's item is named after its note value and shows the percentage ("Tap 3 Synced Time, 40%"). "Edit..." opens a type-in field for the amount, which takes it as the armed slider's type-in does at that moment, in the parameter's unit or as a percentage, and rejects anything else in the same way (0 removes the modulation); "Clear" removes the modulation, announcing "Cleared Tap 3 Feedback".
+- "Bipolar" is ticked while the macro is bipolar. Choosing it switches mode, announcing "Bipolar on" or "Bipolar off".
+
 ### Performance area
 
-The Performance group holds one canvas-like control named "Performance area", with the help tag "Provides additional functionality for live performance." It is exposed to screen readers as an image, the nearest role to a canvas that both platforms name. While it has focus its keys play the plugin rather than edit it. TAB, SHIFT+TAB, the group keys, undo, redo, save, load and the host sync shortcut still work; tap switching, tap on/off, copy and paste, and ALT+F do not.
+The Performance group holds one canvas-like control named "Performance area", with the help tag "Provides additional functionality for live performance." It is exposed to screen readers as an image, the nearest role to a canvas that both platforms name. While it has focus its keys play the plugin rather than edit it. TAB, SHIFT+TAB, the group keys, undo, redo, save, load and the host sync shortcut still work; tap switching, tap on/off, copy and paste, ALT+F and ALT+M do not.
 
 It acts on a selection of taps, which is separate from the selected tap and has no effect anywhere else. The selection starts as all taps, survives closing the window, and is not saved with the session or in presets.
 

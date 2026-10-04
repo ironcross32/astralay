@@ -21,6 +21,9 @@ namespace helpKeys
     inline constexpr auto presetName = "ui_presetName";
     inline constexpr auto tapSelector = "ui_tapSelector";
     inline constexpr auto performance = "ui_performance";
+    inline constexpr auto macroArm = "ui_macroArm";
+    inline constexpr auto macroValue = "ui_macroValue";
+    inline constexpr auto modulationAmount = "ui_modulationAmount";
 }
 
 } // namespace astralay::ui

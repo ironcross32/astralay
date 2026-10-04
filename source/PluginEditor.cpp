@@ -135,16 +135,19 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
     addAndMakeVisible (content);
     content.addAndMakeVisible (mainGroup);
     content.addAndMakeVisible (tapGroup);
+    content.addAndMakeVisible (macrosGroup);
     content.addAndMakeVisible (globalGroup);
     content.addAndMakeVisible (performanceGroup);
 
     mainGroup.setExplicitFocusOrder (1);
     tapGroup.setExplicitFocusOrder (2);
-    globalGroup.setExplicitFocusOrder (3);
-    performanceGroup.setExplicitFocusOrder (4);
+    macrosGroup.setExplicitFocusOrder (3);
+    globalGroup.setExplicitFocusOrder (4);
+    performanceGroup.setExplicitFocusOrder (5);
 
     buildMainGroup();
     buildTapGroup();
+    buildMacrosGroup();
     buildGlobalGroup();
     buildPerformanceGroup();
 
@@ -176,6 +179,7 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
 
     juce::Desktop::getInstance().addFocusChangeListener (this);
     state.state.addListener (this);
+    processor.getMacroChanges().addChangeListener (this);
 
     const auto ratio = (double) ui::sizes::baseWidth / ui::sizes::baseHeight;
     setResizable (true, true);
@@ -189,7 +193,10 @@ AstralayEditor::~AstralayEditor()
 {
     // Ends a held freeze while there is still an editor to end it.
     performancePad.releaseHeldKeys();
+    keyLayer.close();
+    closePrompt (false);
 
+    processor.getMacroChanges().removeChangeListener (this);
     state.state.removeListener (this);
     juce::Desktop::getInstance().removeFocusChangeListener (this);
     setLookAndFeel (nullptr);
@@ -297,6 +304,29 @@ void AstralayEditor::buildTapGroup()
     }
 }
 
+void AstralayEditor::buildMacrosGroup()
+{
+    macros = processor.getMacros();
+
+    for (int m = 0; m < params::numMacros; ++m)
+    {
+        auto& controls = *macroControls.emplace_back (std::make_unique<MacroControls> (astralay::state::macroName (macros, m)));
+
+        controls.arm.setWantsKeyboardFocus (true);
+        controls.arm.onClick = [this, m] { armMacro (armedMacro == m ? -1 : m); };
+
+        // The value slider gets the menu too, so that a right-click on it opens it.
+        controls.group.setContextMenu ([this, m] { showMacroMenu (m); });
+        controls.value.setContextMenu ([this, m] { showMacroMenu (m); });
+
+        controls.group.addInOrder (controls.arm);
+        controls.group.addInOrder (controls.value);
+        macrosGroup.addInOrder (controls.group);
+
+        describeMacro (m);
+    }
+}
+
 void AstralayEditor::buildGlobalGroup()
 {
     using namespace params::global;
@@ -345,17 +375,320 @@ void AstralayEditor::buildPerformanceGroup()
 }
 
 //==============================================================================
+juce::String AstralayEditor::parameterIdFor (const SliderRow& row) const
+{
+    const auto key = synced && row.syncSuffix.isNotEmpty() ? row.syncSuffix : row.suffix;
+    return row.perTap ? params::tapId (selectedTap, key.toRawUTF8()) : key;
+}
+
 void AstralayEditor::bindRow (SliderRow& row)
 {
     const auto useSync = synced && row.syncSuffix.isNotEmpty();
     const auto key = useSync ? row.syncSuffix : row.suffix;
-    const auto id = row.perTap ? params::tapId (selectedTap, key.toRawUTF8()) : key;
+    const auto id = parameterIdFor (row);
 
     auto* parameter = state.getParameter (id);
     jassert (parameter != nullptr);
 
-    if (parameter != nullptr)
-        row.slider.bind (*parameter, useSync ? Unit::plain : params::unitFor (key), key, useSync, 0);
+    if (parameter == nullptr)
+        return;
+
+    row.slider.bind (*parameter, useSync ? Unit::plain : params::unitFor (key), key, useSync, 0);
+
+    // While a macro is armed, the sliders it can move set how far it moves them. A note value
+    // sets the amount of the time it stands in for, as a percentage.
+    const auto target = params::modulationTarget (id);
+
+    if (armedMacro >= 0 && target.isNotEmpty())
+    {
+        const auto scale = target == id ? 1.0 : percentPerUnit (target);
+
+        row.slider.editModulation (astralay::state::macroName (macros, armedMacro), armedAmountFor (id), [this, target, scale] (double amount)
+        {
+            if (armedMacro >= 0)
+                processor.setModulation (armedMacro, target, (float) (amount / scale));
+        }, target != id);
+    }
+}
+
+//==============================================================================
+double AstralayEditor::percentPerUnit (const juce::String& parameterId) const
+{
+    const auto* parameter = state.getParameter (parameterId);
+    return parameter != nullptr ? 100.0 / ui::modulationLimit (*parameter) : 1.0;
+}
+
+double AstralayEditor::armedAmountFor (const juce::String& parameterId) const
+{
+    const auto target = params::modulationTarget (parameterId);
+
+    if (armedMacro >= 0 && target.isNotEmpty())
+        for (const auto& modulation : macros[(size_t) armedMacro].modulations)
+            if (modulation.parameterId == target)
+                return (double) modulation.amount * (target == parameterId ? 1.0 : percentPerUnit (target));
+
+    return 0.0;
+}
+
+void AstralayEditor::armMacro (int macroIndex)
+{
+    if (macroIndex == armedMacro)
+        return;
+
+    const auto previous = std::exchange (armedMacro, macroIndex);
+
+    for (auto m : { previous, armedMacro })
+        if (m >= 0)
+            describeMacro (m);
+
+    for (auto& row : sliderRows)
+        if (params::modulationTarget (parameterIdFor (*row)).isNotEmpty())
+            bindRow (*row);
+
+    announce (armedMacro >= 0 ? astralay::state::macroName (macros, armedMacro) + " armed"
+                              : astralay::state::macroName (macros, previous) + " disarmed");
+}
+
+bool AstralayEditor::handleArmKey (const juce::KeyPress& key)
+{
+    const auto digit = ui::digitForKey (key);
+
+    if (digit < 0 || digit > params::numMacros)
+        return false;
+
+    if (digit == 0 && armedMacro < 0)
+        announce ("No macro was armed");
+    else
+        armMacro (digit == 0 || digit - 1 == armedMacro ? -1 : digit - 1);
+
+    return true;
+}
+
+void AstralayEditor::describeMacro (int macroIndex)
+{
+    auto& controls = *macroControls[(size_t) macroIndex];
+    const auto name = astralay::state::macroName (macros, macroIndex);
+    const auto armed = macroIndex == armedMacro;
+
+    controls.group.setTitle (name);
+    controls.group.repaint();
+
+    // The button says what pressing it does, so its name is also how its state is read.
+    controls.arm.setButtonText (armed ? "Disarm" : "Arm");
+    ui::describe (controls.arm, (armed ? "Disarm " : "Arm ") + name, ui::helpFor (ui::helpKeys::macroArm));
+
+    if (auto* parameter = state.getParameter (params::macroId (macroIndex)))
+    {
+        controls.value.bind (*parameter, Unit::macro, ui::helpKeys::macroValue);
+        ui::describe (controls.value, name + " value", ui::helpFor (ui::helpKeys::macroValue));
+    }
+}
+
+void AstralayEditor::refreshMacros()
+{
+    const auto previous = std::exchange (macros, processor.getMacros());
+
+    for (int m = 0; m < params::numMacros; ++m)
+    {
+        const auto& before = previous[(size_t) m];
+        const auto& after = macros[(size_t) m];
+
+        if (before.name != after.name || before.bipolar != after.bipolar)
+            describeMacro (m);
+    }
+
+    if (armedMacro < 0)
+        return;
+
+    const auto renamed = previous[(size_t) armedMacro].name != macros[(size_t) armedMacro].name;
+
+    for (auto& row : sliderRows)
+    {
+        // A slider whose amount changed may be in the middle of changing it, so it is only
+        // rebound when its name has to change.
+        if (renamed && row->slider.isEditingModulation())
+            bindRow (*row);
+        else
+            row->slider.setModulationAmount (armedAmountFor (parameterIdFor (*row)));
+    }
+}
+
+void AstralayEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    refreshMacros();
+}
+
+void AstralayEditor::showMacroMenu (int macroIndex)
+{
+    constexpr int renameItem = 1, bipolarItem = 2, firstModulationItem = 100;
+
+    const auto& macro = macros[(size_t) macroIndex];
+    auto& controls = *macroControls[(size_t) macroIndex];
+
+    // Type-in fields give focus back to the control the menu was opened from.
+    auto* focused = juce::Component::getCurrentlyFocusedComponent();
+    SafePointer<juce::Component> origin (focused != nullptr && controls.group.isParentOf (focused) ? focused : &controls.arm);
+
+    juce::PopupMenu menu;
+    menu.addItem (renameItem, "Rename...");
+
+    juce::StringArray targets;
+
+    if (! macro.modulations.empty())
+    {
+        juce::PopupMenu modulations;
+
+        for (const auto& modulation : macro.modulations)
+        {
+            const auto item = firstModulationItem + 2 * targets.size();
+            const auto* parameter = state.getParameter (modulation.parameterId);
+            const auto* shown = shownParameterFor (modulation.parameterId);
+            targets.add (modulation.parameterId);
+
+            juce::PopupMenu actions;
+            actions.addItem (item, "Edit...");
+            actions.addItem (item + 1, "Clear");
+
+            // As the control's slider is showing it: a synced note value's amount is a percentage.
+            auto label = modulation.parameterId;
+
+            if (parameter != nullptr && shown != nullptr)
+                label = shown->getName (128) + ", "
+                            + (shown == parameter ? ui::formatModulation (*parameter, modulation.amount)
+                                                  : ui::formatModulationPercent (modulation.amount * percentPerUnit (modulation.parameterId)));
+
+            modulations.addSubMenu (label, actions);
+        }
+
+        menu.addSubMenu ("Modulations", modulations);
+    }
+
+    menu.addItem (bipolarItem, "Bipolar", true, macro.bipolar);
+
+    showMenu (menu, controls.group, [safeThis = SafePointer<AstralayEditor> (this), macroIndex, targets, origin,
+                                     bipolar = macro.bipolar] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+
+        if (result == renameItem)
+        {
+            safeThis->showRenamePrompt (macroIndex, origin.getComponent());
+        }
+        else if (result == bipolarItem)
+        {
+            safeThis->processor.setMacroBipolar (macroIndex, ! bipolar);
+            safeThis->announce (bipolar ? "Bipolar off" : "Bipolar on");
+        }
+        else if (const auto index = (result - firstModulationItem) / 2; juce::isPositiveAndBelow (index, targets.size()))
+        {
+            const auto id = targets[index];
+
+            if ((result - firstModulationItem) % 2 == 0)
+            {
+                safeThis->showAmountPrompt (macroIndex, id, origin.getComponent());
+                return;
+            }
+
+            const auto* parameter = safeThis->shownParameterFor (id);
+            safeThis->processor.setModulation (macroIndex, id, 0.0f);
+            safeThis->announce ("Cleared " + (parameter != nullptr ? parameter->getName (128) : id));
+        }
+    });
+}
+
+void AstralayEditor::showRenamePrompt (int macroIndex, juce::Component* focusAfterwards)
+{
+    const auto name = astralay::state::macroName (macros, macroIndex);
+
+    showPrompt (macroControls[(size_t) macroIndex]->value, focusAfterwards, "Rename " + name,
+                "Type a name and press Enter, or press Escape to cancel. An empty name restores "
+                    + params::defaultMacroName (macroIndex) + ".",
+                name, [this, macroIndex] (const juce::String& text)
+                {
+                    processor.renameMacro (macroIndex, text);
+                    return juce::String();
+                });
+}
+
+void AstralayEditor::showAmountPrompt (int macroIndex, const juce::String& parameterId, juce::Component* focusAfterwards)
+{
+    const auto& modulations = macros[(size_t) macroIndex].modulations;
+    const auto found = std::find_if (modulations.begin(), modulations.end(),
+                                     [&parameterId] (const auto& m) { return m.parameterId == parameterId; });
+    const auto* parameter = state.getParameter (parameterId);
+    const auto* shown = shownParameterFor (parameterId);
+
+    if (found == modulations.end() || parameter == nullptr || shown == nullptr)
+        return;
+
+    // As the control's slider is showing it: a synced note value's amount is a percentage.
+    const auto asPercentage = shown != parameter;
+    const auto scale = asPercentage ? percentPerUnit (parameterId) : 1.0;
+    const auto limit = ui::modulationLimit (*parameter) * scale;
+
+    const auto format = [parameter, asPercentage] (double amount)
+    {
+        return asPercentage ? ui::formatModulationPercent (amount) : ui::formatModulation (*parameter, amount);
+    };
+
+    const auto range = format (-limit) + " to " + format (limit);
+
+    showPrompt (macroControls[(size_t) macroIndex]->value, focusAfterwards,
+                shown->getName (128) + ", " + astralay::state::macroName (macros, macroIndex) + " amount, type a value",
+                "Type a value and press Enter, or press Escape to cancel. Accepted range: " + range + ". 0 removes it.",
+                format (found->amount * scale),
+                [this, macroIndex, parameterId, parameter, asPercentage, scale, limit, range] (const juce::String& text) -> juce::String
+                {
+                    if (text.trim().isEmpty())
+                        return "Enter a value from " + range + ".";
+
+                    const auto amount = asPercentage ? ui::parseModulationPercent (text) : ui::parseModulation (*parameter, text);
+
+                    if (! amount.has_value())
+                        return "Not understood. Enter a value from " + range + ".";
+
+                    if (std::abs (*amount) > limit * (1.0 + 1.0e-6))
+                        return "Out of range, " + range + ".";
+
+                    // Whole numbers for parameters that step in them.
+                    const auto whole = parameter->getNormalisableRange().interval >= 1.0f;
+                    const auto stored = *amount / scale;
+                    processor.setModulation (macroIndex, parameterId, (float) (whole ? std::round (stored) : stored));
+                    return {};
+                });
+}
+
+juce::RangedAudioParameter* AstralayEditor::shownParameterFor (const juce::String& parameterId) const
+{
+    const auto counterpart = params::syncedCounterpart (parameterId);
+    return state.getParameter (synced && counterpart.isNotEmpty() ? counterpart : parameterId);
+}
+
+void AstralayEditor::showPrompt (juce::Component& over, juce::Component* focusAfterwards, const juce::String& title,
+                                 const juce::String& help, const juce::String& text,
+                                 std::function<juce::String (const juce::String&)> commit)
+{
+    closePrompt (false);
+    promptFocus = focusAfterwards;
+    prompt = ui::TypeInField::show (over, title, help, text);
+
+    if (prompt == nullptr)
+        return;
+
+    prompt->onCommit = std::move (commit);
+    prompt->onClose = [this] (bool refocus) { closePrompt (refocus); };
+}
+
+void AstralayEditor::closePrompt (bool refocus)
+{
+    if (prompt == nullptr)
+        return;
+
+    ui::TypeInField::dismiss (prompt);
+
+    if (refocus && promptFocus != nullptr)
+        promptFocus->grabKeyboardFocus();
 }
 
 void AstralayEditor::selectTap (int tapIndex)
@@ -405,16 +738,19 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
 
+    if (keyLayer.handleKey (key))
+        return true;
+
    #if JUCE_MAC
     if (juce::Component::getCurrentlyFocusedComponent() == nullptr && handleKeyWithoutFocus (key))
         return true;
 
     // Hosts keep Cmd+comma and Cmd+period for themselves, so the group keys use Option.
     const auto groupModifier = mods.isAltDown() && ! mods.isCommandDown() && ! mods.isCtrlDown() && ! mods.isShiftDown();
-    const auto freezeModifier = mods.isCommandDown() && ! mods.isAltDown() && ! mods.isShiftDown();
+    const auto shortcutModifier = mods.isCommandDown() && ! mods.isAltDown() && ! mods.isShiftDown();
    #else
     const auto groupModifier = mods.isAltDown() && ! mods.isCtrlDown() && ! mods.isShiftDown();
-    const auto freezeModifier = groupModifier;
+    const auto shortcutModifier = groupModifier;
    #endif
 
     if (groupModifier)
@@ -458,7 +794,15 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
     if (performancePad.hasKeyboardFocus (true))
         return false;
 
-    if (freezeModifier && (key.getKeyCode() == 'f' || key.getKeyCode() == 'F'))
+    // Not while typing, since arming rebinds the sliders.
+    if (shortcutModifier && (key.getKeyCode() == 'm' || key.getKeyCode() == 'M')
+        && dynamic_cast<juce::TextEditor*> (juce::Component::getCurrentlyFocusedComponent()) == nullptr)
+    {
+        keyLayer.open (key, "Arm?", [this] (const juce::KeyPress& next) { return handleArmKey (next); });
+        return true;
+    }
+
+    if (shortcutModifier && (key.getKeyCode() == 'f' || key.getKeyCode() == 'F'))
     {
         toggleAndAnnounce (params::global::freeze, "Freeze");
         return true;
@@ -801,7 +1145,7 @@ void AstralayEditor::valueTreePropertyChanged (juce::ValueTree&, const juce::Ide
 
 void AstralayEditor::jumpToGroup (int direction)
 {
-    const std::array<juce::Component*, 4> groups { &mainGroup, &tapGroup, &globalGroup, &performanceGroup };
+    const std::array<juce::Component*, 5> groups { &mainGroup, &tapGroup, &macrosGroup, &globalGroup, &performanceGroup };
     const auto* focused = juce::Component::getCurrentlyFocusedComponent();
 
     int current = -1;
@@ -932,7 +1276,27 @@ void AstralayEditor::resized()
 
     globalGroup.setBounds (area.removeFromRight (380));
     area.removeFromRight (10);
+    macrosGroup.setBounds (area.removeFromRight (230));
+    area.removeFromRight (10);
     tapGroup.setBounds (area);
+
+    // Macros: one group each, stacked, with the Arm button beside the value slider.
+    {
+        auto inner = macrosGroup.getContentBounds();
+        const auto count = (int) macroControls.size();
+        const auto groupHeight = (inner.getHeight() - (count - 1) * gap) / juce::jmax (1, count);
+
+        for (auto& controls : macroControls)
+        {
+            controls->group.setBounds (inner.removeFromTop (groupHeight));
+            inner.removeFromTop (gap);
+
+            auto row = controls->group.getContentBounds().removeFromTop (rowHeight);
+            controls->arm.setBounds (row.removeFromLeft (76));
+            row.removeFromLeft (gap);
+            controls->value.setBounds (row);
+        }
+    }
 
     // Tap: selector row, the basic controls in two columns, then the glitch sections in a 3 x 3 grid.
     {

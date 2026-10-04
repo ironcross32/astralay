@@ -95,6 +95,11 @@ juce::String helpFor (const juce::String& key)
         { global::mix,         "The balance between the dry input and the repeats. 0% is dry only, 100% is repeats only." },
         { global::outputGain,  "The overall output level." },
 
+        // Macros
+        { helpKeys::macroArm,   "While a macro is armed, adjusting another control sets how far the macro moves that control instead of changing it." },
+        { helpKeys::macroValue, "Moves every control this macro is set up to move." },
+        { helpKeys::modulationAmount, "How far the armed macro moves this control when the macro's value is 1. Setting it to 0 removes it." },
+
         // Performance
         { helpKeys::performance, "Provides additional functionality for live performance." },
     };

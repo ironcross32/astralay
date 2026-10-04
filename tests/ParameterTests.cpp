@@ -120,7 +120,7 @@ public:
 
             constexpr int perTap = 44;
             constexpr int global = 16;
-            expectEquals (parameters.size(), params::numTaps * perTap + global);
+            expectEquals (parameters.size(), params::numTaps * perTap + global + params::numMacros);
 
             std::set<juce::String> ids;
 

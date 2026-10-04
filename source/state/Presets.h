@@ -6,15 +6,17 @@
 namespace astralay::state
 {
 
-/** Preset files: XML holding every parameter's value by ID, plus a version and the preset name.
+/** Preset files: XML holding every parameter's value by ID and the macro settings (see Macros.h),
+    plus a version and the preset name.
 
     <AstralayPreset version="1" name="...">
+      <Macros> ... </Macros>
       <Parameter id="t01_feedback" value="40"/>
       ...
     </AstralayPreset>
 
     Values are stored in the parameter's own units (40 for 40%), so the files are readable. On
-    load, any parameter missing from the file takes its default.
+    load, any parameter missing from the file takes its default, and so do the macro settings.
 */
 namespace Presets
 {
@@ -24,7 +26,8 @@ namespace Presets
     /** Documents/Astralay/Presets on Windows and macOS. Factory presets never live here. */
     juce::File userFolder();
 
-    std::unique_ptr<juce::XmlElement> toXml (const juce::AudioProcessor& processor, const juce::String& name);
+    std::unique_ptr<juce::XmlElement> toXml (const juce::AudioProcessor& processor, const juce::String& name,
+                                             const MacroSettings& macros = {});
 
     /** Reads a preset into a snapshot, with defaults for anything missing. Returns false if the
         XML isn't an Astralay preset.

@@ -17,10 +17,21 @@ namespace
                 callback (*ranged);
     }
 
+    /** A macro's value, normalised over the range the macro has in the snapshot rather than the
+        one it has now.
+    */
+    void setMacroValues (History::Snapshot& snapshot, const std::array<float, params::numMacros>& macroValues)
+    {
+        for (int m = 0; m < params::numMacros; ++m)
+            snapshot.values[params::macroId (m)] = params::MacroParameter::toNormalised (macroValues[(size_t) m],
+                                                                                         snapshot.macros[(size_t) m].bipolar);
+    }
+
     History::Snapshot defaults (const juce::AudioProcessor& processor)
     {
         History::Snapshot snapshot;
         forEachParameter (processor, [&] (juce::RangedAudioParameter& p) { snapshot.values[p.paramID] = p.getDefaultValue(); });
+        setMacroValues (snapshot, {});
         return snapshot;
     }
 
@@ -37,11 +48,13 @@ juce::File userFolder()
                .getChildFile ("Presets");
 }
 
-std::unique_ptr<juce::XmlElement> toXml (const juce::AudioProcessor& processor, const juce::String& name)
+std::unique_ptr<juce::XmlElement> toXml (const juce::AudioProcessor& processor, const juce::String& name,
+                                         const MacroSettings& macros)
 {
     auto xml = std::make_unique<juce::XmlElement> (rootTag);
     xml->setAttribute ("version", version);
     xml->setAttribute ("name", name);
+    xml->addChildElement (Macros::toXml (macros).release());
 
     forEachParameter (processor, [&] (juce::RangedAudioParameter& p)
     {
@@ -61,9 +74,12 @@ bool fromXml (const juce::XmlElement& xml, const juce::AudioProcessor& processor
     result = defaults (processor);
     result.presetName = xml.getStringAttribute ("name");
     result.modified = false;
+    result.macros = Macros::fromXml (xml.getChildByName (Macros::rootTag));
 
     std::map<juce::String, juce::RangedAudioParameter*> byId;
     forEachParameter (processor, [&] (juce::RangedAudioParameter& p) { byId[p.paramID] = &p; });
+
+    std::array<float, params::numMacros> macroValues {};
 
     for (auto* child : xml.getChildWithTagNameIterator (parameterTag))
     {
@@ -73,12 +89,24 @@ bool fromXml (const juce::XmlElement& xml, const juce::AudioProcessor& processor
         if (found != byId.end() && child->hasAttribute ("value"))
         {
             auto& p = *found->second;
+            const auto stored = (float) child->getDoubleAttribute ("value");
+
+            if (dynamic_cast<params::MacroParameter*> (&p) != nullptr)
+            {
+                for (int m = 0; m < params::numMacros; ++m)
+                    if (p.paramID == params::macroId (m))
+                        macroValues[(size_t) m] = stored;
+
+                continue;
+            }
+
             const auto& range = p.getNormalisableRange();
-            const auto value = juce::jlimit (range.start, range.end, (float) child->getDoubleAttribute ("value"));
+            const auto value = juce::jlimit (range.start, range.end, stored);
             result.values[p.paramID] = p.convertTo0to1 (value);
         }
     }
 
+    setMacroValues (result, macroValues);
     return true;
 }
 

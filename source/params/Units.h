@@ -24,6 +24,7 @@ enum class Unit
     bits,
     grainsPerSecond,
     chunks,
+    macro,          // A macro's value: 0 to 1, or -1 to 1.
     plain
 };
 

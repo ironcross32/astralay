@@ -109,6 +109,9 @@ juce::String format (Unit unit, float value, float decibelFloor)
             return juce::String (chunks) + (chunks == 1 ? " chunk" : " chunks");
         }
 
+        case Unit::macro:
+            return trimmedNumber (value, 3);
+
         case Unit::plain:
             break;
     }
@@ -197,6 +200,7 @@ std::optional<float> parse (Unit unit, const juce::String& text, float decibelFl
         case Unit::pan:
         case Unit::ratio:
         case Unit::index:
+        case Unit::macro:
         case Unit::plain:
             break;
     }

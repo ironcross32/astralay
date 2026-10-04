@@ -341,6 +341,132 @@ juce::StringArray stutterSyncChoices()
     return NoteValues::labelsBetween (0.0, 1.0);
 }
 
+juce::String macroId (int macroIndex)
+{
+    return "macro" + juce::String (macroIndex + 1);
+}
+
+juce::String defaultMacroName (int macroIndex)
+{
+    return "Macro " + juce::String (macroIndex + 1);
+}
+
+namespace
+{
+    /** Per-tap IDs are "t01_" and so on. */
+    bool isTapId (const juce::String& id)
+    {
+        return id.length() > 4 && id[0] == 't' && id[3] == '_' && id.substring (1, 3).containsOnly ("0123456789");
+    }
+}
+
+Unit unitForId (const juce::String& id)
+{
+    return unitFor (isTapId (id) ? id.substring (4) : id);
+}
+
+namespace
+{
+    /** Each per-tap time and the note value that takes its place while host sync is on. */
+    constexpr std::array<std::pair<const char*, const char*>, 3> syncedPairs
+    { {
+        { tap::time, tap::timeSync },
+        { tap::stutterMin, tap::stutterSyncMin },
+        { tap::stutterMax, tap::stutterSyncMax },
+    } };
+}
+
+juce::String syncedCounterpart (const juce::String& id)
+{
+    if (isTapId (id))
+        for (const auto& [unsynced, synced] : syncedPairs)
+            if (id.substring (4) == unsynced)
+                return id.substring (0, 4) + synced;
+
+    return {};
+}
+
+juce::String modulationTarget (const juce::String& id)
+{
+    if (isTapId (id))
+        for (const auto& [unsynced, synced] : syncedPairs)
+            if (id.substring (4) == synced)
+                return id.substring (0, 4) + unsynced;
+
+    return canModulate (id) ? id : juce::String();
+}
+
+bool canModulate (const juce::String& id)
+{
+    // Whether a tap is on and its pitch mode have no slider.
+    if (isTapId (id))
+    {
+        const auto suffix = id.substring (4);
+
+        for (const auto& pair : syncedPairs)
+            if (suffix == pair.second)
+                return false;
+
+        return suffix != tap::enabled && suffix != tap::pitchMode;
+    }
+
+    return id == global::glide || id == global::smearAmount || id == global::smearSize || id == global::mix;
+}
+
+//==============================================================================
+MacroParameter::MacroParameter (int macroIndex)
+    : RangedAudioParameter (juce::ParameterID { macroId (macroIndex), 1 }, defaultMacroName (macroIndex)),
+      index (macroIndex)
+{
+}
+
+void MacroParameter::setBipolar (bool shouldBeBipolar)
+{
+    if (bipolar.exchange (shouldBeBipolar) == shouldBeBipolar)
+        return;
+
+    // Listeners, the parameter store among them, hold the value in the old range.
+    sendValueChangedMessageToListeners (getValue());
+}
+
+void MacroParameter::setDisplayName (const juce::String& newName)
+{
+    const juce::ScopedLock lock (nameLock);
+    displayName = newName;
+}
+
+float MacroParameter::toNormalised (float macroValue, bool isBipolar) noexcept
+{
+    return juce::jlimit (0.0f, 1.0f, isBipolar ? (macroValue + 1.0f) * 0.5f : macroValue);
+}
+
+float MacroParameter::fromNormalised (float normalised, bool isBipolar) noexcept
+{
+    return isBipolar ? normalised * 2.0f - 1.0f : normalised;
+}
+
+const juce::NormalisableRange<float>& MacroParameter::getNormalisableRange() const
+{
+    static const Range unipolarRange { 0.0f, 1.0f }, bipolarRange { -1.0f, 1.0f };
+    return bipolar.load() ? bipolarRange : unipolarRange;
+}
+
+juce::String MacroParameter::getName (int maximumStringLength) const
+{
+    const juce::ScopedLock lock (nameLock);
+    return (displayName.isEmpty() ? defaultMacroName (index) : displayName).substring (0, maximumStringLength);
+}
+
+juce::String MacroParameter::getText (float normalisedValue, int) const
+{
+    return Units::format (Unit::macro, fromNormalised (normalisedValue, bipolar.load()));
+}
+
+float MacroParameter::getValueForText (const juce::String& text) const
+{
+    return toNormalised (Units::parse (Unit::macro, text).value_or (0.0f), bipolar.load());
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -349,6 +475,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (createTapGroup (t));
 
     layout.add (createGlobalGroup());
+
+    // After the rest, so that adding the macros left every earlier parameter where it was.
+    auto macros = makeGroup ("macros", "Macros");
+
+    for (int m = 0; m < numMacros; ++m)
+        macros->addChild (std::make_unique<MacroParameter> (m));
+
+    layout.add (std::move (macros));
     return layout;
 }
 

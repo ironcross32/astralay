@@ -18,11 +18,12 @@ Astralay is a multi-tap delay and glitch generator, built to be fully usable wit
 - A shared glitch grid, which can follow the host's tempo, with a global threshold, glitch lengths, and a limit on how many glitches run at once.
 - Reproducible randomness: with a seed, every play-through glitches identically.
 - Host sync, tape-style glide when times change, freeze, smear (diffusion), dry/wet mix, output gain and an output clip.
+- Eight macros, each moving any number of controls at once from a single value you can automate.
 - Presets, factory presets, and undo and redo.
 
 ## Usage
 
-Controls are arranged in four groups: Main, Tap *number*, Global, and Performance. Main houses things like undo and redo, and preset management. The Tap *number* group contains a tap selector, as well as every control for the selected tap. The group is renamed so that *number* represents what tap you're working with. For example, "Tap 3". Everything that affects the sound as a whole lives in global.
+Controls are arranged in five groups: Main, Tap *number*, Macros, Global, and Performance. Main houses things like undo and redo, and preset management. The Tap *number* group contains a tap selector, as well as every control for the selected tap. The group is renamed so that *number* represents what tap you're working with. For example, "Tap 3". Macros holds the eight macros. Everything that affects the sound as a whole lives in global.
 
 ### Keyboard shortcuts
 
@@ -47,6 +48,8 @@ Controls are arranged in four groups: Main, Tap *number*, Global, and Performanc
 | Load a preset | Ctrl+O | Cmd+O |
 | Toggle host sync | Ctrl+Y | Cmd+Y |
 | Toggle freeze | Alt+F | Cmd+F |
+| Arm or disarm a macro | Alt+M, then 1 to 8 | Cmd+M, then 1 to 8 |
+| Disarm the armed macro | Alt+M, then 0 | Cmd+M, then 0 |
 | Switch to tap 1 to 10 | 1 to 9, then 0 | 1 to 9, then 0 |
 | Switch to tap 11 to 16 | Shift+1 to Shift+6 | Shift+1 to Shift+6 |
 | Previous or next tap | Minus or Equals | Minus or Equals |
@@ -67,13 +70,39 @@ The pitch glitch has two modes, chosen for each tap from the context menu on its
 - **Sweep** shifts the audio on every pass through the tap, so with feedback, and most of all while frozen, the pitch keeps moving for as long as the glitch lasts. Min speed and Max speed set how far each pass moves it. Minimum and Maximum are the limits: a sweep that reaches one turns back, and sweeps then tend to head for the middle of the range until the pitch is back there. Sweeps wear a frozen loop down over time; lower the probability or the speed, or narrow the range, to slow that.
 - **Varispeed** changes the tap's time instead, like changing a tape's speed. The pitch bends while the time glides to its new value, at the Glide time, and bends back when the glitch ends. Minimum and Maximum set the speed change; the speed controls aren't used.
 
+### Macros
+
+A macro is one value that moves several controls at once. There are eight, each in its own group inside the Macros group, with an Arm button and a value slider. The value appears to your host as a parameter, so you can automate it or map it to a knob.
+
+To set up what a macro moves:
+
+1. Press its Arm button. The button now reads Disarm.
+2. Go to any control you want the macro to move and adjust it. While a macro is armed, a slider sets how far the macro moves that control, instead of changing the control itself. The amount is in the control's own units: 200 ms on a time makes it 200 ms longer, and -6 dB on a volume makes it 6 dB quieter. The slider keys all work as usual: Home and End go to the largest amounts up and down, Enter lets you type one, and Delete sets it to 0, which removes it.
+3. Set up as many controls as you like, on any tap, then press Disarm.
+
+A time has one amount, which applies whether or not host sync is on. While host sync is on, the time controls are note values and show that amount as a percentage of the range instead, such as 40%; the note value moves by that share of the list and always lands on a whole note value.
+
+You can also arm a macro without leaving the control you're on, anywhere outside the performance area. Press Alt+M (Cmd+M on macOS), wait for "Arm?", then press the macro's number, 1 to 8. Pressing the number of the macro that is already armed disarms it, and 0 disarms whichever one is armed. You have two seconds to press the number; any other key cancels.
+
+Arming a second macro disarms the first. Now moving the macro's value slider moves everything you set up: at a value of 1, each control has moved by the full amount you gave it, and at 0 not at all. The controls themselves keep the values you set; the macro's movement is added on top.
+
+Macros can move every slider except the ones in the Glitch engine group, Output gain, and the macros' own values.
+
+Each macro's group has a context menu, which opens from either of its controls:
+
+- **Rename** gives the macro a name of your own, which your host shows too.
+- **Modulations** lists every control the macro moves, with its amount. Each has **Edit**, to type a new amount, and **Clear**, to remove it. The item is missing when the macro moves nothing.
+- **Bipolar** makes the macro's value run from -1 to 1 instead of 0 to 1, so it can move its controls in both directions from where they sit.
+
+Macro names, modes and modulations are saved with your project and in presets, and changes to them can be undone.
+
 ### Output clipping
 
 The output is hard clipped at +18 dBFS, so that glitches piling up in a frozen loop can't get loud enough for the host to mute the track. To clip at 0 dBFS instead, or to turn clipping off, open the context menu on Output gain. The setting is saved with your project, but it can't be automated and loading a preset doesn't change it.
 
 ### Performance area
 
-The Performance group holds a single control, the performance area. While it has focus, the keys below replace the tap keys, copy and paste, and Alt+F. They act on a selection of taps that starts as all of them and is separate from the selected tap.
+The Performance group holds a single control, the performance area. While it has focus, the keys below replace the tap keys, copy and paste, Alt+F and Alt+M. They act on a selection of taps that starts as all of them and is separate from the selected tap.
 
 | Action | Key |
 | --- | --- |

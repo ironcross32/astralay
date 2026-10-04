@@ -65,48 +65,148 @@ private:
 };
 
 //==============================================================================
-class ParameterSlider::TypeIn final : public juce::TextEditor
+TypeInField::TypeInField (const juce::String& title, const juce::String& help, const juce::String& text, float fontHeight)
 {
-public:
-    TypeIn (ParameterSlider& ownerToUse, float fontHeight)
-        : owner (ownerToUse)
-    {
-        setTitle (owner.getTitle() + ", type a value");
-        setHelpText ("Type a value and press Enter, or press Escape to cancel. Accepted range: " + owner.describeRange() + ".");
-        setFont (juce::FontOptions (fontHeight));
-        setJustification (juce::Justification::centredLeft);
-        setSelectAllWhenFocused (true);
-        setText (owner.getTextFromValue (owner.getValue()), false);
+    setTitle (title);
+    setHelpText (help);
+    setFont (juce::FontOptions (fontHeight));
+    setJustification (juce::Justification::centredLeft);
+    setSelectAllWhenFocused (true);
+    setText (text, false);
 
-        onReturnKey = [this]
+    const auto close = [this] (bool refocus)
+    {
+        if (! dismissed && onClose != nullptr)
+            onClose (refocus);
+    };
+
+    onReturnKey = [this, close]
+    {
+        if (dismissed)
+            return;
+
+        const auto problem = onCommit != nullptr ? onCommit (getText()) : juce::String();
+
+        if (problem.isEmpty())
         {
-            const auto problem = owner.commitTypedText (getText());
+            close (true);
+            return;
+        }
 
-            if (problem.isEmpty())
-            {
-                owner.closeTypeIn (true);
-                return;
-            }
+        // Select the rejected text: typing replaces it, or the arrow keys unselect it for fixing.
+        selectAll();
+        announceFrom (*this, problem);
+    };
 
-            // Select the rejected text: typing replaces it, or the arrow keys unselect it for fixing.
-            selectAll();
-            announceFrom (*this, problem);
-        };
+    onEscapeKey = [close] { close (true); };
+    onFocusLost = [close] { close (false); };
+}
 
-        onEscapeKey = [this] { owner.closeTypeIn (true); };
-        onFocusLost = [this] { owner.closeTypeIn (false); };
-    }
+std::unique_ptr<TypeInField> TypeInField::show (juce::Component& target, const juce::String& title,
+                                                const juce::String& help, const juce::String& text)
+{
+    auto* top = target.getTopLevelComponent();
 
-    void detachCallbacks()
+    if (top == nullptr)
+        return nullptr;
+
+    const auto area = top->getLocalArea (&target, target.getLocalBounds());
+    const auto scale = target.getHeight() > 0 ? (float) area.getHeight() / (float) target.getHeight() : 1.0f;
+
+    std::unique_ptr<TypeInField> field (new TypeInField (title, help, text, sizes::textHeight * scale));
+    top->addAndMakeVisible (*field);
+    field->setBounds (area);
+    field->grabKeyboardFocus();
+    return field;
+}
+
+void TypeInField::dismiss (std::unique_ptr<TypeInField>& field)
+{
+    if (field == nullptr)
+        return;
+
+    // Hiding it takes focus away, which must not close it a second time.
+    field->dismissed = true;
+    field->setVisible (false);
+
+    if (auto* parent = field->getParentComponent())
+        parent->removeChildComponent (field.get());
+
+    // This can run inside the text editor's own callbacks, so delete it once they have returned.
+    juce::MessageManager::callAsync ([doomed = std::shared_ptr<TypeInField> (field.release())] {});
+}
+
+juce::String formatModulationPercent (double percent)
+{
+    auto text = juce::String (percent, 2);
+
+    if (text.containsChar ('.'))
+        text = text.trimCharactersAtEnd ("0").trimCharactersAtEnd (".");
+
+    return (text == "-0" ? juce::String ("0") : text) + "%";
+}
+
+juce::String formatModulation (const juce::RangedAudioParameter& parameter, double amount)
+{
+    const auto value = (float) amount;
+    const auto unit = params::unitForId (parameter.paramID);
+
+    switch (unit)
     {
-        onReturnKey = nullptr;
-        onEscapeKey = nullptr;
-        onFocusLost = nullptr;
+        case Unit::pan:
+        {
+            // The direction the control moves in, rather than a position.
+            const auto distance = juce::roundToInt (std::abs (value));
+            return distance == 0 ? juce::String ("0") : juce::String (distance) + (value < 0.0f ? " left" : " right");
+        }
+
+        // Already signed. An amount in decibels has no floor to show as -inf.
+        case Unit::semitones:   return Units::format (unit, value);
+        case Unit::decibels:    return Units::format (unit, value, -1.0e9f);
+
+        case Unit::milliseconds:
+        case Unit::percent:
+        case Unit::hertz:
+        case Unit::semitonesPerPass:
+        case Unit::ratio:
+        case Unit::index:
+        case Unit::multiplier:
+        case Unit::bits:
+        case Unit::grainsPerSecond:
+        case Unit::chunks:
+        case Unit::macro:
+        case Unit::plain:
+            break;
     }
 
-private:
-    ParameterSlider& owner;
-};
+    // The unit's own formatting picks its precision from the size of the value, so it is given
+    // the size and the sign goes in front.
+    const auto text = Units::format (unit, std::abs (value));
+    return value < 0.0f && Units::format (unit, 0.0f) != text ? "-" + text : text;
+}
+
+std::optional<double> parseModulationPercent (const juce::String& text)
+{
+    if (const auto parsed = Units::parse (Unit::percent, text))
+        return (double) *parsed;
+
+    return std::nullopt;
+}
+
+std::optional<double> parseModulation (const juce::RangedAudioParameter& parameter, const juce::String& text)
+{
+    // For volume, "-inf" is the whole range downwards.
+    if (const auto parsed = Units::parse (params::unitForId (parameter.paramID), text, (float) -modulationLimit (parameter)))
+        return (double) *parsed;
+
+    return std::nullopt;
+}
+
+double modulationLimit (const juce::RangedAudioParameter& parameter)
+{
+    const auto& range = parameter.getNormalisableRange();
+    return (double) range.end - (double) range.start;
+}
 
 //==============================================================================
 ParameterSlider::ParameterSlider()
@@ -127,6 +227,8 @@ void ParameterSlider::bind (juce::RangedAudioParameter& newParameter, Unit unit,
 {
     closeTypeIn (false);
     attachment.reset();
+    modulationChanged = nullptr;
+    setColour (juce::Slider::trackColourId, colours::sliderFill);
     parameter = &newParameter;
 
     const auto& range = newParameter.getNormalisableRange();
@@ -157,8 +259,60 @@ void ParameterSlider::bind (juce::RangedAudioParameter& newParameter, Unit unit,
     // rebinds dozens of sliders, and sending an event for each one makes the switch lag while the
     // screen reader processes them.
     if (hasKeyboardFocus (false))
-        if (auto* handler = getAccessibilityHandler())
-            handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+        notifyValueChanged();
+}
+
+void ParameterSlider::editModulation (const juce::String& macroName, double amount, std::function<void (double)> onChange,
+                                      bool asPercentage)
+{
+    if (parameter == nullptr)
+        return;
+
+    closeTypeIn (false);
+    attachment.reset();
+    modulationChanged = std::move (onChange);
+    modulationIsPercentage = asPercentage;
+    setColour (juce::Slider::trackColourId, colours::modulationFill);
+
+    // Up to the width of the parameter's range either way, in its unit and on its own steps.
+    const auto limit = asPercentage ? 100.0 : modulationLimit (*parameter);
+    const auto whole = steps.isInteger && ! asPercentage;
+    setNormalisableRange (juce::NormalisableRange<double> (-limit, limit, whole ? 1.0 : 0.0));
+
+    if (asPercentage)
+    {
+        steps = {};
+        steps.unit = Unit::percent;
+    }
+
+    steps.minimum = -limit;
+    steps.maximum = limit;
+    steps.isInteger = whole;
+    steps.isOffset = true;
+
+    describe (*this, parameter->getName (128) + ", " + macroName + " amount", helpFor (helpKeys::modulationAmount));
+    setDoubleClickReturnValue (true, 0.0);
+
+    {
+        const juce::ScopedValueSetter<bool> updating (updatingFromParameter, true);
+        setValue (amount, juce::dontSendNotification);
+    }
+
+    updateText();
+
+    if (hasKeyboardFocus (false))
+        notifyValueChanged();
+}
+
+void ParameterSlider::setModulationAmount (double amount)
+{
+    if (! isEditingModulation() || std::abs (amount - getValue()) < 1.0e-4)
+        return;
+
+    setValue (amount, juce::dontSendNotification);
+
+    if (hasKeyboardFocus (false))
+        notifyValueChanged();
 }
 
 juce::String ParameterSlider::getTextFromValue (double value)
@@ -166,18 +320,37 @@ juce::String ParameterSlider::getTextFromValue (double value)
     if (parameter == nullptr)
         return Slider::getTextFromValue (value);
 
+    if (isEditingModulation())
+        return modulationIsPercentage ? formatModulationPercent (value) : formatModulation (*parameter, value);
+
     return parameter->getText (parameter->convertTo0to1 ((float) value), 0);
+}
+
+void ParameterSlider::notifyValueChanged()
+{
+    if (auto* handler = getAccessibilityHandler())
+        handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
 }
 
 void ParameterSlider::setFromUser (double newValue)
 {
-    if (attachment == nullptr)
+    const auto limited = juce::jlimit (getMinimum(), getMaximum(), newValue);
+
+    if (isEditingModulation())
+    {
+        setValue (limited, juce::dontSendNotification);
+        modulationChanged (limited);
+    }
+    else if (attachment != nullptr)
+    {
+        attachment->setValueAsCompleteGesture ((float) limited);
+    }
+    else
+    {
         return;
+    }
 
-    attachment->setValueAsCompleteGesture ((float) juce::jlimit (getMinimum(), getMaximum(), newValue));
-
-    if (auto* handler = getAccessibilityHandler())
-        handler->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+    notifyValueChanged();
 }
 
 bool ParameterSlider::keyPressed (const juce::KeyPress& key)
@@ -226,7 +399,8 @@ bool ParameterSlider::keyPressed (const juce::KeyPress& key)
     // Not Backspace, which the editor uses to turn the selected tap on or off.
     if (code == juce::KeyPress::deleteKey)
     {
-        setFromUser (parameter->convertFrom0to1 (parameter->getDefaultValue()));
+        // A modulation's default is none at all.
+        setFromUser (isEditingModulation() ? 0.0 : (double) parameter->convertFrom0to1 (parameter->getDefaultValue()));
         return true;
     }
 
@@ -283,18 +457,15 @@ void ParameterSlider::showTypeIn()
     if (typeIn != nullptr || parameter == nullptr)
         return;
 
-    auto* top = getTopLevelComponent();
+    typeIn = TypeInField::show (*this, getTitle() + ", type a value",
+                                "Type a value and press Enter, or press Escape to cancel. Accepted range: " + describeRange() + ".",
+                                getTextFromValue (getValue()));
 
-    if (top == nullptr)
+    if (typeIn == nullptr)
         return;
 
-    const auto area = top->getLocalArea (this, getLocalBounds());
-    const auto scale = getHeight() > 0 ? (float) area.getHeight() / (float) getHeight() : 1.0f;
-
-    typeIn = std::make_unique<TypeIn> (*this, sizes::textHeight * scale);
-    top->addAndMakeVisible (*typeIn);
-    typeIn->setBounds (area);
-    typeIn->grabKeyboardFocus();
+    typeIn->onCommit = [this] (const juce::String& text) { return commitTypedText (text); };
+    typeIn->onClose = [this] (bool refocus) { closeTypeIn (refocus); };
 }
 
 void ParameterSlider::closeTypeIn (bool refocus)
@@ -302,14 +473,7 @@ void ParameterSlider::closeTypeIn (bool refocus)
     if (typeIn == nullptr)
         return;
 
-    typeIn->detachCallbacks();
-    typeIn->setVisible (false);
-
-    if (auto* parent = typeIn->getParentComponent())
-        parent->removeChildComponent (typeIn.get());
-
-    // This can run inside the text editor's own callbacks, so delete it once they have returned.
-    juce::MessageManager::callAsync ([doomed = std::shared_ptr<TypeIn> (typeIn.release())] {});
+    TypeInField::dismiss (typeIn);
 
     if (refocus)
         grabKeyboardFocus();
@@ -331,7 +495,16 @@ juce::String ParameterSlider::commitTypedText (const juce::String& text)
 
     double value;
 
-    if (steps.isNoteValue)
+    if (isEditingModulation())
+    {
+        const auto parsed = modulationIsPercentage ? parseModulationPercent (text) : parseModulation (*parameter, text);
+
+        if (! parsed.has_value())
+            return "Not understood. Enter a value from " + describeRange() + ".";
+
+        value = steps.isInteger ? std::round (*parsed) : *parsed;
+    }
+    else if (steps.isNoteValue)
     {
         const auto index = NoteValues::parse (text);
 
@@ -361,7 +534,12 @@ juce::String ParameterSlider::commitTypedText (const juce::String& text)
 
 void ParameterSlider::valueChanged()
 {
-    if (! updatingFromParameter && attachment != nullptr)
+    if (updatingFromParameter)
+        return;
+
+    if (isEditingModulation())
+        modulationChanged (getValue());
+    else if (attachment != nullptr)
         attachment->setValueAsPartOfGesture ((float) getValue());
 }
 

@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <map>
+#include "Macros.h"
 
 namespace astralay::state
 {
@@ -19,10 +20,14 @@ namespace astralay::state
 class History final : private juce::AudioProcessorParameter::Listener
 {
 public:
-    /** Parameter values by ID, in normalised form, plus the preset name and modified flag. */
+    /** Parameter values by ID, in normalised form, plus the macro settings, the preset name and
+        the modified flag. A macro's value is normalised over the range that macro has in the
+        same snapshot.
+    */
     struct Snapshot
     {
         std::map<juce::String, float> values;
+        MacroSettings macros;
         juce::String presetName;
         bool modified = false;
     };
@@ -33,11 +38,12 @@ public:
     /** Called on the message thread after each recorded user edit (not undo, redo or snapshots). */
     std::function<void()> onUserEdit;
 
-    /** Called when a snapshot is applied by undo or redo, so the owner can restore the preset name
-        and modified flag.
+    /** Called as a snapshot is applied, before its parameter values are set, so the owner can
+        restore the macro settings, the preset name and the modified flag.
     */
     std::function<void (const Snapshot&)> onSnapshotApplied;
 
+    /** The current parameter values. The owner fills in the macro settings. */
     Snapshot capture (const juce::String& presetName, bool modified) const;
 
     /** Applies a snapshot and records it as one undoable step named description. With

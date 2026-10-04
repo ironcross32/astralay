@@ -11,6 +11,7 @@ namespace
         double normal, fine, coarse;
     };
 
+    /** Frequencies only get here as offsets, and are asked for as milliseconds: 10 / 1 / 100. */
     Increments additiveIncrements (Unit unit)
     {
         switch (unit)
@@ -25,6 +26,7 @@ namespace
             case Unit::index:           return { 0.1, 0.01, 1.0 };
             case Unit::multiplier:      return { 1.0, 0.1, 8.0 };
             case Unit::grainsPerSecond: return { 1.0, 0.1, 10.0 };
+            case Unit::macro:           return { 0.01, 0.001, 0.1 };
             case Unit::bits:
             case Unit::chunks:
             case Unit::hertz:
@@ -86,14 +88,14 @@ double stepValue (const StepContext& c, double current, int direction, StepSize 
         const auto coarse = juce::jmax (1.0, std::round ((c.maximum - c.minimum) / 10.0));
         next = std::round (current) + direction * (size == StepSize::coarse ? coarse : 1.0);
     }
-    else if (c.unit == Unit::hertz)
+    else if (c.unit == Unit::hertz && ! c.isOffset)
     {
         const Increments semitones { 1.0, 0.1, 12.0 };
         next = current * std::pow (2.0, direction * pick (semitones, size) / 12.0);
     }
     else
     {
-        const auto increment = pick (additiveIncrements (c.unit), size);
+        const auto increment = pick (additiveIncrements (c.unit == Unit::hertz ? Unit::milliseconds : c.unit), size);
 
         // Snap to the step grid so repeated presses land on round values.
         const auto snapped = std::round (current / increment) * increment;
@@ -110,10 +112,10 @@ double normalStepSize (const StepContext& c, double current)
     if (c.isNoteValue || c.isInteger)
         return 1.0;
 
-    if (c.unit == Unit::hertz)
+    if (c.unit == Unit::hertz && ! c.isOffset)
         return juce::jmax (0.01, current * (std::pow (2.0, 1.0 / 12.0) - 1.0));
 
-    return additiveIncrements (c.unit).normal;
+    return additiveIncrements (c.unit == Unit::hertz ? Unit::milliseconds : c.unit).normal;
 }
 
 } // namespace astralay::ui

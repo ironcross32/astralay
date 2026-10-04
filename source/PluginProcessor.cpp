@@ -20,11 +20,21 @@ AstralayProcessor::AstralayProcessor()
 {
     using namespace astralay::params;
 
-    const auto get = [this] (const juce::String& id)
+    // The engine reads a parameter that macros can move through its modulated value.
+    const auto get = [this] (const juce::String& id) -> std::atomic<float>*
     {
         auto* p = state.getRawParameterValue (id);
         jassert (p != nullptr);
-        return p;
+
+        if (modulationTarget (id).isEmpty())
+            return p;
+
+        auto& modulated = modulatedValues.emplace_back();
+        modulated.parameter = state.getParameter (id);
+        modulated.source = p;
+        modulated.value = p->load();
+        modulatedIndices[id] = (int) modulatedValues.size() - 1;
+        return &modulated.value;
     };
 
     for (int t = 0; t < numTaps; ++t)
@@ -99,6 +109,16 @@ AstralayProcessor::AstralayProcessor()
     for (const auto& label : stutterSyncChoices())
         stutterNoteIndices.push_back (astralay::NoteValues::indexOf (label));
 
+    for (int m = 0; m < numMacros; ++m)
+    {
+        macroParameters[(size_t) m] = dynamic_cast<MacroParameter*> (state.getParameter (macroId (m)));
+        jassert (macroParameters[(size_t) m] != nullptr);
+    }
+
+    // Room for every macro to move every parameter, so the audio thread never allocates.
+    pendingRoutes.reserve ((size_t) numMacros * modulatedValues.size());
+    activeRoutes.reserve (pendingRoutes.capacity());
+
     setPresetInfo ("Init", false);
 
     history.onUserEdit = [this]
@@ -109,6 +129,7 @@ AstralayProcessor::AstralayProcessor()
 
     history.onSnapshotApplied = [this] (const astralay::state::History::Snapshot& snapshot)
     {
+        applyMacros (snapshot.macros);
         setPresetInfo (snapshot.presetName, snapshot.modified);
     };
 
@@ -136,9 +157,17 @@ void AstralayProcessor::setPresetInfo (const juce::String& name, bool modified)
     state.state.setProperty (presetModifiedProperty, modified, nullptr);
 }
 
+astralay::state::History::Snapshot AstralayProcessor::captureSnapshot() const
+{
+    auto snapshot = history.capture (getPresetName(), isPresetModified());
+    snapshot.macros = getMacros();
+    return snapshot;
+}
+
 juce::String AstralayProcessor::applyPreset (const astralay::state::History::Snapshot& preset)
 {
-    const auto before = history.capture (getPresetName(), isPresetModified());
+    const auto before = captureSnapshot();
+    lastModulationEdit.clear();
     history.applyAndRecord (before, preset, "load preset " + preset.presetName);
     return "Loaded " + preset.presetName;
 }
@@ -169,7 +198,7 @@ juce::String AstralayProcessor::loadPresetFile (const juce::File& file)
 juce::String AstralayProcessor::savePresetFile (const juce::File& file)
 {
     const auto name = file.getFileNameWithoutExtension();
-    const auto xml = astralay::state::Presets::toXml (*this, name);
+    const auto xml = astralay::state::Presets::toXml (*this, name, getMacros());
 
     if (! file.getParentDirectory().createDirectory() || ! xml->writeTo (file))
         return "Could not save " + file.getFileName();
@@ -181,14 +210,185 @@ juce::String AstralayProcessor::savePresetFile (const juce::File& file)
 void AstralayProcessor::applyEdit (const std::map<juce::String, float>& values, const juce::String& description,
                                    bool mergeWithPrevious)
 {
-    const auto before = history.capture (getPresetName(), isPresetModified());
+    const auto before = captureSnapshot();
     auto after = before;
     after.modified = true;
 
     for (const auto& [id, value] : values)
         after.values[id] = value;
 
+    lastModulationEdit.clear();
     history.applyAndRecord (before, after, description, mergeWithPrevious);
+}
+
+//==============================================================================
+astralay::state::MacroSettings AstralayProcessor::getMacros() const
+{
+    const juce::ScopedLock lock (macroLock);
+    return macros;
+}
+
+void AstralayProcessor::applyMacros (const astralay::state::MacroSettings& settings)
+{
+    using namespace astralay::params;
+
+    {
+        const juce::ScopedLock lock (macroLock);
+        macros = settings;
+    }
+
+    auto hostInfoChanged = false;
+    std::vector<Route> routes;
+
+    for (int m = 0; m < numMacros; ++m)
+    {
+        const auto& macro = settings[(size_t) m];
+        auto* parameter = macroParameters[(size_t) m];
+        const auto name = astralay::state::macroName (settings, m);
+
+        if (parameter->isBipolar() != macro.bipolar || parameter->getName (1024) != name)
+        {
+            parameter->setDisplayName (macro.name);
+            parameter->setBipolar (macro.bipolar);
+            hostInfoChanged = true;
+        }
+
+        for (const auto& modulation : macro.modulations)
+        {
+            const auto found = modulatedIndices.find (modulation.parameterId);
+
+            if (! canModulate (modulation.parameterId) || found == modulatedIndices.end())
+                continue;
+
+            routes.push_back ({ m, found->second, modulation.amount });
+
+            // The note value that takes a time's place while host sync is on moves by the same
+            // share of its own range, so the modulation holds whichever of the two is in use.
+            const auto synced = modulatedIndices.find (syncedCounterpart (modulation.parameterId));
+
+            if (synced != modulatedIndices.end())
+            {
+                const auto width = [this] (int index)
+                {
+                    const auto& range = modulatedValues[(size_t) index].parameter->getNormalisableRange();
+                    return range.end - range.start;
+                };
+
+                routes.push_back ({ m, synced->second, modulation.amount * width (synced->second) / width (found->second) });
+            }
+        }
+    }
+
+    {
+        const juce::SpinLock::ScopedLockType lock (routeLock);
+        pendingRoutes.assign (routes.begin(), routes.end());
+        routesChanged = true;
+    }
+
+    // The macro parameters' names and ranges, as the host shows them.
+    if (hostInfoChanged)
+        updateHostDisplay (ChangeDetails().withParameterInfoChanged (true));
+
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        macroChanges.sendSynchronousChangeMessage();
+    else
+        macroChanges.sendChangeMessage();
+}
+
+void AstralayProcessor::editMacros (const astralay::state::MacroSettings& settings, const juce::String& description,
+                                    bool mergeWithPrevious, const std::map<juce::String, float>& values)
+{
+    const auto before = captureSnapshot();
+    auto after = before;
+    after.modified = true;
+    after.macros = settings;
+
+    for (const auto& [id, value] : values)
+        after.values[id] = value;
+
+    lastModulationEdit.clear();
+    history.applyAndRecord (before, after, description, mergeWithPrevious);
+}
+
+void AstralayProcessor::renameMacro (int macroIndex, const juce::String& name)
+{
+    auto settings = getMacros();
+    const auto oldName = astralay::state::macroName (settings, macroIndex);
+    const auto trimmed = name.trim().substring (0, 64);
+    auto& stored = settings[(size_t) macroIndex].name;
+
+    stored = trimmed == astralay::params::defaultMacroName (macroIndex) ? juce::String() : trimmed;
+
+    if (astralay::state::macroName (settings, macroIndex) != oldName)
+        editMacros (settings, "rename " + oldName);
+}
+
+void AstralayProcessor::setMacroBipolar (int macroIndex, bool bipolar)
+{
+    using astralay::params::MacroParameter;
+
+    auto settings = getMacros();
+    auto& macro = settings[(size_t) macroIndex];
+
+    if (macro.bipolar == bipolar)
+        return;
+
+    macro.bipolar = bipolar;
+
+    const auto value = macroParameters[(size_t) macroIndex]->getMacroValue();
+    const auto normalised = MacroParameter::toNormalised (bipolar ? value : juce::jmax (0.0f, value), bipolar);
+
+    editMacros (settings, astralay::state::macroName (settings, macroIndex) + (bipolar ? " bipolar" : " unipolar"), false,
+                { { astralay::params::macroId (macroIndex), normalised } });
+}
+
+void AstralayProcessor::setModulation (int macroIndex, const juce::String& parameterId, float amount)
+{
+    const auto found = modulatedIndices.find (parameterId);
+
+    if (! astralay::params::canModulate (parameterId) || found == modulatedIndices.end())
+        return;
+
+    auto settings = getMacros();
+    auto& modulations = settings[(size_t) macroIndex].modulations;
+
+    // Up to the width of the parameter's range either way.
+    const auto& range = modulatedValues[(size_t) found->second].parameter->getNormalisableRange();
+    const auto limit = range.end - range.start;
+    const auto newAmount = juce::jlimit (-limit, limit, amount);
+    const auto remove = std::abs (newAmount) < limit * 1.0e-6f;
+    const auto existing = std::find_if (modulations.begin(), modulations.end(),
+                                        [&parameterId] (const auto& m) { return m.parameterId == parameterId; });
+
+    if (existing == modulations.end())
+    {
+        if (remove)
+            return;
+
+        modulations.push_back ({ parameterId, newAmount });
+    }
+    else if (remove)
+    {
+        modulations.erase (existing);
+    }
+    else if (juce::approximatelyEqual (existing->amount, newAmount))
+    {
+        return;
+    }
+    else
+    {
+        existing->amount = newAmount;
+    }
+
+    const auto edit = juce::String (macroIndex) + ":" + parameterId;
+    const auto now = juce::Time::getMillisecondCounter();
+    const auto merge = edit == lastModulationEdit && now - lastModulationEditTime <= astralay::state::History::mergeWindowMs;
+
+    editMacros (settings, "modulation of " + modulatedValues[(size_t) found->second].parameter->getName (128)
+                              + " by " + astralay::state::macroName (settings, macroIndex), merge);
+
+    lastModulationEdit = edit;
+    lastModulationEditTime = now;
 }
 
 void AstralayProcessor::copyTapSettings (int tapIndex, const juce::String& suffix)
@@ -332,9 +532,52 @@ AstralayProcessor::HostInfo AstralayProcessor::readHost() const
     return info;
 }
 
+void AstralayProcessor::updateModulatedValues()
+{
+    using namespace astralay::params;
+
+    if (routesChanged.load())
+    {
+        // If the message thread is in the middle of leaving new routes, they wait for the next block.
+        const juce::SpinLock::ScopedTryLockType lock (routeLock);
+
+        if (lock.isLocked())
+        {
+            std::swap (activeRoutes, pendingRoutes);
+            routesChanged = false;
+        }
+    }
+
+    std::array<float, numMacros> macroValues;
+
+    for (size_t m = 0; m < macroValues.size(); ++m)
+        macroValues[m] = macroParameters[m]->getMacroValue();
+
+    for (const auto& route : activeRoutes)
+        modulatedValues[(size_t) route.target].offset += macroValues[(size_t) route.macro] * route.amount;
+
+    for (auto& modulated : modulatedValues)
+    {
+        const auto value = modulated.source->load();
+        const auto offset = std::exchange (modulated.offset, 0.0f);
+
+        if (juce::exactlyEqual (offset, 0.0f))
+        {
+            modulated.value = value;
+            continue;
+        }
+
+        // Amounts are in the parameter's own unit. Stepped parameters land on their steps.
+        const auto& range = modulated.parameter->getNormalisableRange();
+        modulated.value = range.snapToLegalValue (juce::jlimit (range.start, range.end, value + offset));
+    }
+}
+
 void AstralayProcessor::updateEngineSettings()
 {
     using namespace astralay;
+
+    updateModulatedValues();
 
     const auto sampleRate = getSampleRate() > 0.0 ? getSampleRate() : 44100.0;
     const auto synced = globalParameters.sync->load() >= 0.5f;
@@ -472,7 +715,10 @@ void AstralayProcessor::getStateInformation (juce::MemoryBlock& destData)
     copy.setProperty (outputClipProperty, (int) outputClip.load(), nullptr);
 
     if (const auto xml = copy.createXml())
+    {
+        xml->addChildElement (astralay::state::Macros::toXml (getMacros()).release());
         copyXmlToBinary (*xml, destData);
+    }
 }
 
 void AstralayProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -481,6 +727,13 @@ void AstralayProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     if (xml == nullptr || ! xml->hasTagName (state.state.getType()))
         return;
+
+    // Before the parameters, since a macro's saved value is in the range these settings give it.
+    // Sessions saved before there were macros get the default settings. The element is taken out
+    // so that it doesn't stay in the parameter state.
+    auto* macrosXml = xml->getChildByName (astralay::state::Macros::rootTag);
+    applyMacros (astralay::state::Macros::fromXml (macrosXml));
+    xml->removeChildElement (macrosXml, true);
 
     // replaceState leaves parameters missing from older states at their current values, so start
     // from defaults: anything absent from the saved state then takes its default value.
@@ -496,6 +749,7 @@ void AstralayProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     // The undo history belongs to the settings that were just replaced.
     history.clear();
+    lastModulationEdit.clear();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

@@ -73,7 +73,7 @@ void LookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, 
     g.setColour (colours::sliderTrack);
     g.fillRect (bounds);
 
-    g.setColour (colours::sliderFill);
+    g.setColour (slider.findColour (juce::Slider::trackColourId));
     g.fillRect (bounds.withRight (sliderPos));
 
     g.setColour (colours::outline);

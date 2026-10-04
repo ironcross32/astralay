@@ -1,17 +1,19 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "state/Macros.h"
 #include "ui/AccessibleGroup.h"
 #include "ui/Announcer.h"
 #include "ui/ContextMenu.h"
+#include "ui/KeyLayer.h"
 #include "ui/ParameterControls.h"
 #include "ui/PerformancePad.h"
 #include "ui/Theme.h"
 
 class AstralayProcessor;
 
-/** The plugin window: four top-level groups (Main, the selected tap, Global, Performance) laid out
-    at a fixed base size and scaled with the window.
+/** The plugin window: five top-level groups (Main, the selected tap, Macros, Global, Performance)
+    laid out at a fixed base size and scaled with the window.
 
     Keyboard: Tab moves through every control in order and wraps; Alt+period and Alt+comma
     (Cmd on macOS) jump to the first control of the next or previous group. Outside the
@@ -19,11 +21,19 @@ class AstralayProcessor;
     Backspace turns the selected tap on or off, and Ctrl+C and Ctrl+V copy and paste a tap or one
     of its settings. The right bracket key opens the focused control's context menu, if it has one;
     moving to such a control announces "has context menu".
+
+    Macros: each has a group named after it, holding an Arm button and a value slider, with a
+    context menu for renaming it, editing or clearing what it moves, and making it bipolar. While
+    a macro is armed, the sliders it can move set how far it moves them instead of their own
+    values. Only one macro is armed at a time, and none once the window closes. Alt+M (Cmd+M on
+    macOS) asks "Arm?" and takes the next key: 1 to 8 arms that macro, or disarms it if it is
+    armed, and 0 disarms whichever is.
 */
 class AstralayEditor final : public juce::AudioProcessorEditor,
                              public astralay::ui::AnnouncementTarget,
                              private juce::FocusChangeListener,
-                             private juce::ValueTree::Listener
+                             private juce::ValueTree::Listener,
+                             private juce::ChangeListener
 {
 public:
     explicit AstralayEditor (AstralayProcessor&);
@@ -61,6 +71,15 @@ private:
         std::vector<LayoutItem> items;
     };
 
+    struct MacroControls
+    {
+        explicit MacroControls (const juce::String& title) : group (title) {}
+
+        astralay::ui::AccessibleGroup group;
+        juce::TextButton arm;
+        astralay::ui::ParameterSlider value;
+    };
+
     class FocusOutline;
 
     SliderRow& addSliderRow (astralay::ui::AccessibleGroup& group, std::vector<LayoutItem>& items,
@@ -72,10 +91,53 @@ private:
 
     void buildMainGroup();
     void buildTapGroup();
+    void buildMacrosGroup();
     void buildGlobalGroup();
     void buildPerformanceGroup();
 
+    /** The ID of the parameter a row is showing. */
+    juce::String parameterIdFor (const SliderRow& row) const;
     void bindRow (SliderRow& row);
+
+    /** Arms a macro, disarming whichever was armed, or disarms them all with -1. */
+    void armMacro (int macroIndex);
+
+    /** Handles the key that follows the arming shortcut. Returns false if it isn't 0 to 8. */
+    bool handleArmKey (const juce::KeyPress& key);
+
+    /** The amount a slider showing this parameter has for the armed macro: in the parameter's
+        unit, or for a synced note value, the amount of the time it stands in for as a percentage.
+    */
+    double armedAmountFor (const juce::String& parameterId) const;
+
+    /** What an amount for this parameter is multiplied by to give a percentage of its range. */
+    double percentPerUnit (const juce::String& parameterId) const;
+
+    /** The parameter whose slider is showing in place of this one, which is its synced note value
+        while host sync is on and it has one, and otherwise itself.
+    */
+    juce::RangedAudioParameter* shownParameterFor (const juce::String& parameterId) const;
+
+    /** Names a macro's controls after it and binds its value slider, whose range depends on
+        whether the macro is bipolar.
+    */
+    void describeMacro (int macroIndex);
+
+    /** Brings the macro controls, and the sliders setting the armed macro's amounts, up to date
+        with the processor.
+    */
+    void refreshMacros();
+    void showMacroMenu (int macroIndex);
+    void showRenamePrompt (int macroIndex, juce::Component* focusAfterwards);
+    void showAmountPrompt (int macroIndex, const juce::String& parameterId, juce::Component* focusAfterwards);
+
+    /** Opens a type-in field over a control. commit is given the typed text and returns an empty
+        string to accept it, or the message to announce.
+    */
+    void showPrompt (juce::Component& over, juce::Component* focusAfterwards, const juce::String& title,
+                     const juce::String& help, const juce::String& text,
+                     std::function<juce::String (const juce::String&)> commit);
+    void closePrompt (bool refocus);
     void selectTap (int tapIndex);
 
     /** Selects a tap from the keyboard, announcing its number. Does nothing if it is selected. */
@@ -117,6 +179,7 @@ private:
     void showPitchModeMenu (juce::Component& target);
 
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void jumpToGroup (int direction);
 
    #if JUCE_MAC
@@ -140,8 +203,8 @@ private:
     astralay::ui::LookAndFeel lookAndFeel;
     juce::Component content;
 
-    astralay::ui::AccessibleGroup mainGroup { "Main" }, tapGroup { "Tap 1" }, globalGroup { "Global" },
-                                  performanceGroup { "Performance" };
+    astralay::ui::AccessibleGroup mainGroup { "Main" }, tapGroup { "Tap 1" }, macrosGroup { "Macros" },
+                                  globalGroup { "Global" }, performanceGroup { "Performance" };
 
     // Main
     juce::TextButton undoButton { "Undo" }, redoButton { "Redo" }, saveButton { "Save" }, loadButton { "Load" };
@@ -153,6 +216,13 @@ private:
     astralay::ui::ParameterToggle tapEnabled { "Enabled" };
     std::vector<LayoutItem> tapBasics;
     std::vector<GlitchSection> glitchSections;
+
+    // Macros
+    std::vector<std::unique_ptr<MacroControls>> macroControls;
+    astralay::state::MacroSettings macros;   // As the controls last showed them.
+    int armedMacro = -1;
+    std::unique_ptr<astralay::ui::TypeInField> prompt;
+    juce::Component::SafePointer<juce::Component> promptFocus;
 
     // Global
     astralay::ui::AccessibleGroup timingGroup { "Timing" }, engineGroup { "Glitch engine" }, outputGroup { "Output" };
@@ -170,6 +240,7 @@ private:
     juce::TooltipWindow tooltipWindow { this, 700 };
     astralay::ui::Announcer announcer { *this };
     astralay::ui::ContextMenuHint contextMenuHint { announcer };
+    astralay::ui::KeyLayer keyLayer { announcer };
 
     std::unique_ptr<juce::FileChooser> fileChooser;
     static constexpr int fromFileItemId = 10000;

@@ -7,6 +7,7 @@ namespace astralay::params
 {
 
 constexpr int numTaps = 16;
+constexpr int numMacros = 8;
 constexpr float volumeFloorDb = -60.0f;   // Shown and treated as -inf.
 constexpr double maxDelaySeconds = 10.0;  // Synced times longer than this are clamped.
 constexpr double fallbackTempo = 120.0;
@@ -103,7 +104,71 @@ juce::String tapParameterName (int tapIndex, const char* suffix);
 */
 Unit unitFor (const juce::String& suffixOrGlobalId);
 
-/** Every parameter in the plugin, grouped as "Tap 1" to "Tap 16" then "Global". */
+/** The unit of any parameter, by its full ID. */
+Unit unitForId (const juce::String& parameterId);
+
+/** ID of a macro's value parameter, for example macroId (2) is "macro3". macroIndex is zero-based. */
+juce::String macroId (int macroIndex);
+
+/** The name a macro has until the user renames it, for example "Macro 3". macroIndex is zero-based. */
+juce::String defaultMacroName (int macroIndex);
+
+/** Whether a macro can be given this parameter to move. True for the parameters that have a
+    slider, apart from the glitch engine's, the output gain, the macros themselves, and the note
+    values that stand in for a time while host sync is on, which follow the time's modulation.
+*/
+bool canModulate (const juce::String& parameterId);
+
+/** The note-value parameter that takes a time's place while host sync is on, for example
+    "t01_timeSync" for "t01_time", or an empty string if there is none. A macro that moves the
+    time moves the note value too, by the same share of its range.
+*/
+juce::String syncedCounterpart (const juce::String& parameterId);
+
+/** The parameter a slider showing this one sets a macro's amount for: the parameter itself, the
+    time a synced note value stands in for, or an empty string if a macro can't move it.
+*/
+juce::String modulationTarget (const juce::String& parameterId);
+
+/** A macro's value: 0 to 1, or -1 to 1 while the macro is bipolar. Either range covers the whole
+    of the normalised value, so a host's knob or automation lane always uses its full travel.
+    Hosts see the macro under the name the user gave it.
+*/
+class MacroParameter final : public juce::RangedAudioParameter
+{
+public:
+    explicit MacroParameter (int macroIndex);
+
+    /** Switches the range. The normalised value stays as it is, so the macro's value changes. */
+    void setBipolar (bool shouldBeBipolar);
+    bool isBipolar() const noexcept { return bipolar.load(); }
+
+    /** An empty name restores the default. */
+    void setDisplayName (const juce::String& newName);
+
+    /** The value in the macro's current range. Safe to call on the audio thread. */
+    float getMacroValue() const noexcept { return fromNormalised (value.load(), bipolar.load()); }
+
+    static float toNormalised (float macroValue, bool isBipolar) noexcept;
+    static float fromNormalised (float normalised, bool isBipolar) noexcept;
+
+    const juce::NormalisableRange<float>& getNormalisableRange() const override;
+    juce::String getName (int maximumStringLength) const override;
+    float getValue() const override { return value.load(); }
+    void setValue (float newValue) override { value.store (juce::jlimit (0.0f, 1.0f, newValue)); }
+    float getDefaultValue() const override { return toNormalised (0.0f, bipolar.load()); }
+    juce::String getText (float normalisedValue, int maximumStringLength) const override;
+    float getValueForText (const juce::String& text) const override;
+
+private:
+    const int index;
+    std::atomic<float> value { 0.0f };
+    std::atomic<bool> bipolar { false };
+    juce::String displayName;
+    juce::CriticalSection nameLock;
+};
+
+/** Every parameter in the plugin, grouped as "Tap 1" to "Tap 16", "Global", then "Macros". */
 juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
 /** Where glitches are applied in each tap, as indices of the glitch placement parameter. */

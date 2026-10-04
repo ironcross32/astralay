@@ -17,6 +17,7 @@ void Tap::prepare (double newSampleRate, int maxDelaySamples)
     sampleRate = newSampleRate;
     line.prepare (maxDelaySamples);
     glitches.prepare (sampleRate, (double) maxDelaySamples / sampleRate);
+    freezeSustain.prepare (sampleRate, maxDelaySamples);
 
     const juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
 
@@ -38,6 +39,7 @@ void Tap::prepare (double newSampleRate, int maxDelaySamples)
 
 void Tap::reset()
 {
+    freezeSustain.reset();
     line.clear();
     glitches.reset();
     lowCut.reset();
@@ -97,7 +99,7 @@ void Tap::setSettings (const TapSettings& s, float glideSeconds, const GlitchGlo
     }
 }
 
-void Tap::process (float input, float freeze, float& left, float& right) noexcept
+void Tap::process (float input, float freeze, float& left, float& right, bool sustain) noexcept
 {
     // A varispeed pitch glitch changes the delay time, and the glide to it bends the pitch.
     if (const auto scale = glitches.getDelayScale(); ! juce::exactlyEqual (scale, delayScale))
@@ -122,13 +124,18 @@ void Tap::process (float input, float freeze, float& left, float& right) noexcep
     const auto delaySamples = (float) delayPosition;
 
     glitches.setLoop (delaySamples, loopGain);
-    const auto glitchOutput = glitches.process (delayed);
+    const auto saved = freezeSustain.next (sustain, freeze, delayPosition, line, glitches);
+    const auto glitchOutput = glitches.process (delayed, saved.amount, saved.state.pitch, saved.state.formant);
+    freezeSustain.observe (glitchOutput);
 
     // Nothing that isn't a number may reach the output or go back into the delay line, where it
     // would stay for good. The engine keeps such samples out of the input, so these guards only
     // act if something in the tap itself goes wrong, and then they clear whatever was holding it.
     const auto glitchFault = isNonFinite (glitchOutput);
-    const auto glitched = glitchFault ? delayed : glitchOutput;
+    auto glitched = glitchFault ? delayed : glitchOutput;
+
+    if (saved.amount > 0.0f)
+        glitched += saved.amount * (saved.audio - glitched);
 
     if (glitchFault)
         glitches.reset();
@@ -171,6 +178,7 @@ void Tap::endBlock() noexcept
         glitches.reset();
         lowCut.reset();
         highCut.reset();
+        freezeSustain.reset();
         idle = true;
     }
 }

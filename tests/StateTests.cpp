@@ -154,6 +154,7 @@ public:
             AstralayProcessor processor;
             edit (parameter (processor, tapId (4, tap::pan)), -35.0f);
             edit (parameter (processor, global::sync), 1.0f);
+            edit (parameter (processor, global::freezeSustain), 1.0f);
 
             expectEquals (processor.savePresetFile (file), juce::String ("Saved Astralay test preset"));
             expect (! processor.isPresetModified());
@@ -162,6 +163,7 @@ public:
             expectEquals (other.loadPresetFile (file), juce::String ("Loaded Astralay test preset"));
             expectWithinAbsoluteError (plain (parameter (other, tapId (4, tap::pan))), -35.0f, 0.01f);
             expectWithinAbsoluteError (plain (parameter (other, global::sync)), 1.0f, 0.01f);
+            expectEquals (plain (parameter (other, global::freezeSustain)), 1.0f);
             expectEquals (other.getPresetName(), juce::String ("Astralay test preset"));
 
             file.deleteFile();
@@ -188,6 +190,46 @@ public:
 
             auto& mix = parameter (processor, global::mix);
             expectWithinAbsoluteError (loaded.values[global::mix], mix.getDefaultValue(), 1.0e-6f);
+        }
+
+        beginTest ("Freeze sustain is undoable and older sessions restore it off");
+        {
+            AstralayProcessor processor;
+            auto& sustain = parameter (processor, global::freezeSustain);
+            expectEquals (plain (sustain), 0.0f);
+            edit (sustain, 1.0f);
+            processor.getHistory().undo();
+            expectEquals (plain (sustain), 0.0f);
+            processor.getHistory().redo();
+            expectEquals (plain (sustain), 1.0f);
+
+            juce::MemoryBlock saved;
+            processor.getStateInformation (saved);
+            AstralayProcessor other;
+            other.setStateInformation (saved.getData(), (int) saved.getSize());
+            expectEquals (plain (parameter (other, global::freezeSustain)), 1.0f);
+
+            auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+            for (auto* child : xml->getChildIterator())
+                if (child->getStringAttribute ("id") == global::freezeSustain)
+                {
+                    xml->removeChildElement (child, true);
+                    break;
+                }
+            juce::AudioProcessor::copyXmlToBinary (*xml, saved);
+            other.setStateInformation (saved.getData(), (int) saved.getSize());
+            expectEquals (plain (parameter (other, global::freezeSustain)), 0.0f);
+
+            auto preset = state::Presets::toXml (processor, "Older");
+            for (auto* child : preset->getChildIterator())
+                if (child->getStringAttribute ("id") == global::freezeSustain)
+                {
+                    preset->removeChildElement (child, true);
+                    break;
+                }
+            state::History::Snapshot loaded;
+            expect (state::Presets::fromXml (*preset, processor, loaded));
+            expectEquals (loaded.values[global::freezeSustain], 0.0f);
         }
 
         beginTest ("Something that isn't a preset is refused");

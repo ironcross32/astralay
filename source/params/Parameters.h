@@ -76,6 +76,7 @@ namespace global
     inline constexpr auto sync         = "sync";
     inline constexpr auto glide        = "glide";
     inline constexpr auto freeze       = "freeze";
+    inline constexpr auto freezeSustain = "freezeSustain";
     inline constexpr auto threshold    = "threshold";
     inline constexpr auto placement    = "glitchPlacement";
     inline constexpr auto bufferSize   = "bufferSize";
@@ -168,7 +169,7 @@ private:
     juce::CriticalSection nameLock;
 };
 
-/** Every parameter in the plugin, grouped as "Tap 1" to "Tap 16", "Global", then "Macros". */
+/** Parameters grouped as taps, Global and Macros, followed by newer parameters to keep host indices stable. */
 juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
 /** Where glitches are applied in each tap, as indices of the glitch placement parameter. */

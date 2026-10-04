@@ -337,6 +337,7 @@ void AstralayEditor::buildGlobalGroup()
     addToggle (timingGroup, timingItems, syncToggle, sync);
     addSliderRow (timingGroup, timingItems, "Glide time", glide, nullptr, false);
     addToggle (timingGroup, timingItems, freezeToggle, freeze);
+    addToggle (timingGroup, timingItems, sustainToggle, freezeSustain);
 
     addSliderRow (engineGroup, engineItems, "Threshold", threshold, nullptr, false);
 

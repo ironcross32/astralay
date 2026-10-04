@@ -78,6 +78,7 @@ namespace
     struct LoopChange
     {
         float level = 0.0f, peak = 0.0f, treble = 0.0f, offset = 0.0f;
+        float minimumLevel = 1.0f;
 
         juce::String describe() const
         {
@@ -90,13 +91,17 @@ namespace
         glitches in the tap's settings fire at every chunk for the given number of seconds.
     */
     template <typename Source>
-    LoopChange runFrozenLoop (float delay, int seed, double seconds, TapGlitchSettings glitch, Source&& source)
+    LoopChange runFrozenLoop (float delay, int seed, double seconds, TapGlitchSettings glitch, Source&& source,
+                              bool sustain = false, bool outputAndFeedback = false, int maxGlitches = 2)
     {
         auto global = wetOnly();
         global.glitch.threshold = 1.0f;
         global.glitch.chunkSamples = 6000;
         global.reproducible = true;
         global.seed = seed;
+        global.freezeSustain = sustain;
+        global.glitch.outputAndFeedback = outputAndFeedback;
+        global.glitch.maxSimultaneous = maxGlitches;
 
         // The glitches start once the loop has closed.
         auto tap = singleTap (delay, 0.4f);
@@ -150,6 +155,8 @@ namespace
 
         LoopChange change;
         change.level = rms (left, (int) left.size() - 24000, 24000) / before;
+        for (auto i = (int) glitchAt + 48000; i + 24000 <= (int) left.size(); i += 24000)
+            change.minimumLevel = juce::jmin (change.minimumLevel, rms (left, i, 24000) / before);
         change.treble = movement ((int) left.size() - 24000, 24000) / movement ((int) glitchAt - reference, reference);
 
         for (size_t i = glitchAt; i < left.size(); ++i)
@@ -587,6 +594,64 @@ public:
                 const auto level = juce::Decibels::gainToDecibels (rms (out, 96000, 48000 * 5) / rms (in, 96000, 48000 * 5));
                 expect (std::abs (level) < 1.5f, juce::String (density) + " grains a second: " + juce::String (level, 1) + " dB");
             }
+        }
+
+        beginTest ("Freeze sustain keeps destructive glitches audible, in either placement");
+        {
+            auto lowest = 1.0f, highest = 0.0f;
+            for (const auto type : { GlitchType::granularize, GlitchType::ringModulation, GlitchType::bitCrusher, GlitchType::pitch })
+                for (const auto delay : { 48.0f, 1920.0f, 12000.0f })
+                    for (const auto seed : { 3, 7 })
+                    {
+                        TapGlitchSettings glitch;
+                        glitch.probability[(size_t) type] = 1.0f;
+                        glitch.bits = { 1.0f, 1.0f }; // Below the crusher's dead zone, only recovery can keep audio.
+                        juce::Random random (11);
+                        const auto change = runFrozenLoop (delay, seed, 20.0, glitch,
+                            [&random] (size_t) { return 0.2f + 0.2f * (random.nextFloat() - 0.5f); }, true, seed == 7);
+                        const auto message = "Type " + juce::String ((int) type) + ", delay " + juce::String (delay)
+                                           + ", seed " + juce::String (seed) + ": " + change.describe();
+                        expect (change.level > 0.15f && change.level < 3.0f, message);
+                        expect (change.minimumLevel > 0.1f, "A half-second window went quiet: " + message);
+                        expect (std::isfinite (change.peak) && change.peak < 15.0f, message);
+                        lowest = juce::jmin (lowest, change.minimumLevel);
+                        highest = juce::jmax (highest, change.level);
+                    }
+            logMessage ("Sustain matrix: lowest half-second RMS " + juce::String (20.0f * std::log10 (lowest), 1)
+                        + " dB, highest ending RMS " + juce::String (20.0f * std::log10 (highest), 1) + " dB relative to capture-era output");
+        }
+
+        beginTest ("Freeze sustain survives combined glitches and a quiet recording");
+        {
+            const std::array<std::array<GlitchType, 4>, 2> combinations {{
+                { GlitchType::granularize, GlitchType::pitch, GlitchType::lpcFormant, GlitchType::cepstralFormant },
+                { GlitchType::pitch, GlitchType::ringModulation, GlitchType::frequencyModulation, GlitchType::bitCrusher }
+            }};
+            for (const auto& types : combinations)
+                for (const auto amplitude : { 0.2f, 0.00001f })
+                {
+                    TapGlitchSettings glitch;
+                    for (const auto type : types)
+                        glitch.probability[(size_t) type] = 1.0f;
+                    glitch.bits = { 1.0f, 1.0f };
+                    juce::Random random (17);
+                    const auto change = runFrozenLoop (336.0f, 7, 120.0, glitch,
+                        [&random, amplitude] (size_t) { return amplitude * (random.nextFloat() - 0.5f); }, true, true, 4);
+                    expect (change.level > 0.15f && change.level < 3.0f, change.describe());
+                    expect (change.minimumLevel > 0.1f, "A half-second window went quiet: " + change.describe());
+                    expect (std::isfinite (change.peak) && change.peak < 15.0f, change.describe());
+                }
+        }
+
+        beginTest ("With freeze sustain off the crusher can still erase a loop");
+        {
+            TapGlitchSettings glitch;
+            glitch.probability[(size_t) GlitchType::bitCrusher] = 1.0f;
+            glitch.bits = { 1.0f, 1.0f };
+            juce::Random random (11);
+            const auto change = runFrozenLoop (1920.0f, 3, 5.0, glitch,
+                [&random] (size_t) { return 0.1f * (random.nextFloat() - 0.5f); });
+            expect (change.level < 0.001f, change.describe());
         }
 
         beginTest ("Dense grains in a feedback loop don't run away");

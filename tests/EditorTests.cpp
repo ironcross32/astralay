@@ -70,10 +70,10 @@ public:
                 titles.add (titleOf (*c));
 
             // Main 5, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
-            // each of the 8 macros, global 15, performance 1.
-            expectEquals ((int) stops.size(), 78);
+            // each of the 8 macros, global 16, performance 1.
+            expectEquals ((int) stops.size(), 79);
 
-            if (stops.size() != 78)
+            if (stops.size() != 79)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
             const juce::StringArray expectedStart { "Undo", "Redo", "Save", "Load", "Preset: Init",
@@ -86,7 +86,7 @@ public:
             for (int i = 0; i < expectedStart.size(); ++i)
                 expectEquals (titles[i], expectedStart[i]);
 
-            const juce::StringArray expectedEnd { "Host Sync", "Glide Time", "Freeze",
+            const juce::StringArray expectedEnd { "Host Sync", "Glide Time", "Freeze", "Freeze Sustain",
                                                   "Glitch Threshold", "Glitch Placement", "Buffer Size",
                                                   "Maximum Simultaneous Glitches", "Minimum Glitch Length",
                                                   "Maximum Glitch Length", "Reproducible Randomness", "Seed",
@@ -125,6 +125,28 @@ public:
                 expectEquals (groupPath (*pad).joinIntoString ("/"), juce::String ("Performance"));
             else
                 expect (false, "Performance area missing");
+        }
+
+        beginTest ("Freeze sustain is accessible, operable and fits inside Global");
+        {
+            auto* control = findByTitle (ed, "Freeze Sustain");
+            expect (control != nullptr);
+            if (control != nullptr)
+            {
+                expectEquals (groupPath (*control).joinIntoString ("/"), juce::String ("Timing/Global"));
+                expectEquals (valueOf (processor, global::freezeSustain), 0.0f);
+                auto* button = dynamic_cast<juce::Button*> (control);
+                expect (button != nullptr);
+                if (button != nullptr)
+                {
+                    button->setToggleState (true, juce::sendNotificationSync);
+                    expectEquals (valueOf (processor, global::freezeSustain), 1.0f);
+                    button->setToggleState (false, juce::sendNotificationSync);
+                }
+            }
+            for (auto* c : tabOrder (ed))
+                if (groupPath (*c).contains ("Global"))
+                    expect (c->getParentComponent()->getLocalBounds().contains (c->getBounds()), titleOf (*c) + " is clipped");
         }
 
         beginTest ("Every control has a help tag");

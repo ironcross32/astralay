@@ -227,7 +227,7 @@ private:
     // Global
     astralay::ui::AccessibleGroup timingGroup { "Timing" }, engineGroup { "Glitch engine" }, outputGroup { "Output" };
     std::vector<LayoutItem> timingItems, engineItems, outputItems;
-    astralay::ui::ParameterToggle syncToggle { "Host sync" }, freezeToggle { "Freeze" },
+    astralay::ui::ParameterToggle syncToggle { "Host sync" }, freezeToggle { "Freeze" }, sustainToggle { "Freeze sustain" },
                                   reproducibleToggle { "Reproducible randomness" };
     juce::Label placementLabel;
     astralay::ui::ParameterChoice placementChoice;

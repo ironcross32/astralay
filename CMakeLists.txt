@@ -137,6 +137,7 @@ if(ASTRALAY_BUILD_TESTS)
             ${ASTRALAY_CORE_SOURCES}
             tests/TestMain.cpp
             tests/DspTests.cpp
+            tests/FreezeSustainTests.cpp
             tests/ParameterTests.cpp
             tests/StepTests.cpp
             tests/EditorTests.cpp

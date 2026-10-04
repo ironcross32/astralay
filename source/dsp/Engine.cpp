@@ -131,7 +131,7 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
 
         for (auto& tap : taps)
             if (! tap.isIdle())
-                tap.process (mono, frozen, wetLeft, wetRight);
+                tap.process (mono, frozen, wetLeft, wetRight, global.freeze && global.freezeSustain);
 
         wetLeft = leftDcBlocker.process (wetLeft);
         wetRight = rightDcBlocker.process (wetRight);

@@ -182,6 +182,7 @@ private:
         std::atomic<float>* sync = nullptr;
         std::atomic<float>* glide = nullptr;
         std::atomic<float>* freeze = nullptr;
+        std::atomic<float>* freezeSustain = nullptr;
         std::atomic<float>* mix = nullptr;
         std::atomic<float>* outputGain = nullptr;
         std::atomic<float>* smearAmount = nullptr;

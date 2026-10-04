@@ -70,6 +70,12 @@ The pitch glitch has two modes, chosen for each tap from the context menu on its
 - **Sweep** shifts the audio on every pass through the tap, so with feedback, and most of all while frozen, the pitch keeps moving for as long as the glitch lasts. Min speed and Max speed set how far each pass moves it. Minimum and Maximum are the limits: a sweep that reaches one turns back, and sweeps then tend to head for the middle of the range until the pitch is back there. Sweeps wear a frozen loop down over time; lower the probability or the speed, or narrow the range, to slow that.
 - **Varispeed** changes the tap's time instead, like changing a tape's speed. The pitch bends while the time glides to its new value, at the Glide time, and bends back when the glitch ends. Minimum and Maximum set the speed change; the speed controls aren't used.
 
+### Freeze sustain
+
+The **Freeze Sustain** toggle is beside Freeze in Global's Timing group and is off by default. Turn it on to keep frozen repeats audible when glitches wear them down. Each tap saves a protected copy of its loop and gradually blends some of it back as the processed audio loses level. Recovery can bring back the earlier sound of the loop.
+
+Capturing takes one trip around each tap. If you turn sustain on during a freeze, it saves what remains then; it cannot recover a loop that has already gone silent. Turning sustain off fades recovery out, and releasing freeze or disabling a tap discards its recording. The setting is saved with presets and projects and can be automated.
+
 ### Macros
 
 A macro is one value that moves several controls at once. There are eight, each in its own group inside the Macros group, with an Arm button and a value slider. The value appears to your host as a parameter, so you can automate it or map it to a knob.

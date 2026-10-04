@@ -98,8 +98,13 @@ void GlitchChain::reset()
 
 float GlitchChain::readLoopTrack (const std::vector<float>& track) const noexcept
 {
+    return readLoopTrack (track, loopSamples);
+}
+
+float GlitchChain::readLoopTrack (const std::vector<float>& track, float samplesAgo) const noexcept
+{
     const auto size = (int) track.size();
-    const auto back = juce::jmax (1, juce::roundToInt (juce::jmin (loopSamples, 1.0e8f) / (float) loopTrackStep));
+    const auto back = juce::jmax (1, juce::roundToInt (juce::jmin (samplesAgo, 1.0e8f) / (float) loopTrackStep));
 
     // A loop longer than the track is no loop at all, as when setLoop() was never called.
     if (back >= size)
@@ -408,7 +413,7 @@ float GlitchChain::applyFormantStage (GlitchType type, FormantShifter& shifter, 
     return y;
 }
 
-float GlitchChain::process (float input) noexcept
+float GlitchChain::process (float input, float restoredAmount, float restoredPitch, float restoredFormant) noexcept
 {
     auto y = input;
 
@@ -480,6 +485,15 @@ float GlitchChain::process (float input) noexcept
     if (trackingFormants)
         formantTrackingLeft = shiftingFormants || std::abs (formantOffset) > 1.0e-4f ? formantTrackingSpan : formantTrackingLeft - 1;
 
+    // The tap blends protected audio in after the chain. Its metadata must travel back with
+    // that mixture too; otherwise a shifter would mistake restored audio for already shifted audio.
+    if (restoredAmount > 0.0f)
+    {
+        pitchOffset += restoredAmount * (restoredPitch - pitchOffset);
+        formantOffset += restoredAmount * (restoredFormant - formantOffset);
+        if (std::abs (formantOffset) > 1.0e-4f)
+            formantTrackingLeft = formantTrackingSpan;
+    }
     writeLoopTracks (pitchOffset, formantOffset);
 
     if (isActive (GlitchType::ringModulation))

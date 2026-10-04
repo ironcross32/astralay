@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "DelayLine.h"
 #include "GlitchChain.h"
+#include "FreezeSustain.h"
 
 namespace astralay::dsp
 {
@@ -60,7 +61,7 @@ public:
     /** Processes one sample and adds the tap's panned output to left and right.
         freeze runs from 0 (off) to 1 (fully frozen).
     */
-    void process (float input, float freeze, float& left, float& right) noexcept;
+    void process (float input, float freeze, float& left, float& right, bool sustain = false) noexcept;
 
     /** Call at the end of each block. Flushes filter denormals and finishes fading out. */
     void endBlock() noexcept;
@@ -76,6 +77,7 @@ private:
 
     DelayLine line;
     GlitchChain glitches;
+    FreezeSustain freezeSustain;
     float baseDelay = 0.0f, delayScale = 1.0f;
     bool glitchesHeard = false;
     juce::dsp::StateVariableTPTFilter<float> lowCut, highCut;

@@ -46,7 +46,15 @@ public:
     void onChunkBoundary();
 
     /** Processes one sample. Always call it, even with no glitches running, so histories fill. */
-    float process (float input) noexcept;
+    float process (float input, float restoredAmount = 0.0f, float restoredPitch = 0.0f, float restoredFormant = 0.0f) noexcept;
+
+    struct LoopState { float pitch = 0.0f, formant = 0.0f; };
+
+    /** Metadata beside the audio this many samples back in the tap, before this sample is processed. */
+    LoopState getLoopState (float samplesAgo) const noexcept
+    {
+        return { readLoopTrack (loopTrack, samplesAgo), readLoopTrack (formantLoopTrack, samplesAgo) };
+    }
 
     int getNumActive() const noexcept;
     bool isActive (GlitchType type) const noexcept { return slots[(size_t) type].active; }
@@ -175,6 +183,7 @@ private:
     static constexpr int loopTrackStep = 16;
 
     float readLoopTrack (const std::vector<float>& track) const noexcept;
+    float readLoopTrack (const std::vector<float>& track, float samplesAgo) const noexcept;
     void writeLoopTracks (float pitchSemitones, float formantSemitones) noexcept;
 
     float pitchOffset = 0.0f;       // Of the audio leaving the pitch stage now.

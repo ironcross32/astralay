@@ -43,7 +43,7 @@ namespace
         return std::make_unique<juce::AudioParameterInt> (juce::ParameterID { id, 1 }, name, min, max, defaultValue, attributes);
     }
 
-    std::unique_ptr<juce::AudioParameterBool> makeBool (const juce::String& id, const juce::String& name, bool defaultValue)
+    std::unique_ptr<juce::AudioParameterBool> makeBool (const juce::String& id, const juce::String& name, bool defaultValue, int version = 1)
     {
         auto attributes = juce::AudioParameterBoolAttributes()
                               .withStringFromValueFunction ([] (bool v, int) { return v ? "On" : "Off"; })
@@ -53,7 +53,7 @@ namespace
                                                                 return t == "on" || t == "1" || t == "yes" || t == "true";
                                                             });
 
-        return std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id, 1 }, name, defaultValue, attributes);
+        return std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id, version }, name, defaultValue, attributes);
     }
 
     /** A choice among note values. choices must be a contiguous run of NoteValues::labels(). */
@@ -483,6 +483,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         macros->addChild (std::make_unique<MacroParameter> (m));
 
     layout.add (std::move (macros));
+    // Append new parameters so every existing host parameter index remains stable. The editor
+    // places this beside Freeze in Global/Timing; version 2 also preserves AU automation order.
+    layout.add (makeBool (global::freezeSustain, "Freeze Sustain", false, 2));
     return layout;
 }
 

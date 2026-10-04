@@ -13,6 +13,7 @@ struct GlobalSettings
 {
     float glideSeconds = 0.1f;
     bool freeze = false;
+    bool freezeSustain = false;
     float mix = 0.5f;           // 0 (dry) to 1 (wet).
     float outputGain = 1.0f;    // Linear.
     float clipCeiling = 0.0f;   // Linear level the output is hard clipped at; 0 doesn't clip.

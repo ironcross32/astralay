@@ -77,6 +77,7 @@ juce::String helpFor (const juce::String& key)
         { global::sync,   "Follows the host's tempo, so times are set as note values instead of milliseconds." },
         { global::glide,  "How long a tap takes to slide to a new time, bending the pitch like tape." },
         { global::freeze, "Holds the current repeats forever. New input is not added, but glitches keep firing." },
+        { global::freezeSustain, "While frozen, restores some saved loop audio when glitches wear the repeats down. Off by default. Turning it on during a freeze saves what remains." },
 
         // Global: glitch engine
         { global::threshold,    "Scales every glitch probability on every tap. At 0% nothing glitches." },

@@ -91,6 +91,7 @@ AstralayProcessor::AstralayProcessor()
     globalParameters.sync       = get (global::sync);
     globalParameters.glide      = get (global::glide);
     globalParameters.freeze     = get (global::freeze);
+    globalParameters.freezeSustain = get (global::freezeSustain);
     globalParameters.mix        = get (global::mix);
     globalParameters.outputGain = get (global::outputGain);
     globalParameters.smearAmount = get (global::smearAmount);
@@ -602,6 +603,7 @@ void AstralayProcessor::updateEngineSettings()
     dsp::GlobalSettings g;
     g.glideSeconds = load (globalParameters.glide) / 1000.0f;
     g.freeze = load (globalParameters.freeze) >= 0.5f;
+    g.freezeSustain = load (globalParameters.freezeSustain) >= 0.5f;
     g.mix = load (globalParameters.mix) / 100.0f;
     g.outputGain = juce::Decibels::decibelsToGain (load (globalParameters.outputGain));
     g.clipCeiling = params::outputClipCeiling (outputClip.load());

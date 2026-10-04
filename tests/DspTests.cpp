@@ -774,6 +774,64 @@ public:
             }
         }
 
+        beginTest ("Changing the glide time during a glide doesn't make the tap jump");
+        {
+            // A tap gliding from 100 ms to 500 ms over 2 seconds. The glide time is changed once
+            // part of the way there, then on every block as a macro modulating it would. Either
+            // used to send the tap straight to its new time.
+            for (const auto everyBlock : { false, true })
+            {
+                auto global = wetOnly();
+                global.glideSeconds = 2.0f;
+
+                auto tap = singleTap (4800.0f, 0.0f);
+
+                Engine engine;
+                setUp (engine, global, tap);
+
+                const auto input = sineBurst (48000 * 4, 48000 * 4, 1000.0f);
+                std::vector<float> left (input), right (input.size(), 0.0f);
+                auto block = 0;
+
+                for (size_t start = 0; start < input.size(); start += blockSize, ++block)
+                {
+                    if (block == 100)
+                        tap.delaySamples = 24000.0f;
+
+                    if (everyBlock ? block >= 200 : block == 200)
+                        global.glideSeconds = block % 2 == 0 ? 1.9f : 2.0f;
+
+                    engine.setGlobalSettings (global);
+                    engine.setTapSettings (0, tap);
+
+                    const auto n = (int) std::min ((size_t) blockSize, input.size() - start);
+                    engine.process (left.data() + start, nullptr, left.data() + start, right.data() + start, n);
+                }
+
+                // The tap's time is growing, so the sine comes back slowed and steps no further from
+                // one sample to the next than it does at full speed, give or take the interpolation.
+                // The jump was a step 5.6 times that.
+                const auto centre = std::cos (juce::MathConstants<float>::pi * 0.25f);
+                const auto steady = 0.5f * centre * juce::MathConstants<float>::twoPi * 1000.0f / (float) testSampleRate;
+                auto biggest = 0.0f;
+
+                for (size_t i = 10000; i + 1 < left.size(); ++i)
+                    biggest = juce::jmax (biggest, std::abs (left[i + 1] - left[i]));
+
+                // And it still arrives: the last quarter second is the input from 500 ms before.
+                auto furthest = 0.0f;
+
+                for (size_t i = left.size() - 12000; i < left.size(); ++i)
+                    furthest = juce::jmax (furthest, std::abs (left[i] - centre * input[i - 24000]));
+
+                const auto message = juce::String (everyBlock ? "Changed every block" : "Changed once") + ": biggest step "
+                                         + juce::String (biggest / steady) + " times a steady sine's, " + juce::String (furthest) + " from the tap's new time";
+
+                expect (biggest < 1.05f * steady, message);
+                expect (furthest < 0.01f, message);
+            }
+        }
+
         beginTest ("A frozen loop worn down to a constant offset doesn't send that offset to the output");
         {
             // Pitch sweeps wear a short loop down to its mean, which the level-keeping fades then

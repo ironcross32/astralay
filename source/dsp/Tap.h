@@ -80,13 +80,69 @@ private:
     bool glitchesHeard = false;
     juce::dsp::StateVariableTPTFilter<float> lowCut, highCut;
 
-    // In double precision: on a long tap, one sample's share of a glide is too small for a float
-    // to add to the delay, which then stays put and jumps at the end of the glide.
-    juce::SmoothedValue<double, juce::ValueSmoothingTypes::Linear> delay;
+    /** The tap's delay time on its way to a new value, in a straight line that takes the glide time.
+
+        In double precision: on a long tap, one sample's share of a glide is too small for a float
+        to add to the delay, which then stays put and jumps at the end of the glide.
+
+        A change of glide time during a glide keeps the glide going, with the same share of its
+        time left. A juce::SmoothedValue has to be reset to change its time, which sends it
+        straight to its target.
+    */
+    class DelayGlide
+    {
+    public:
+        void setGlideSamples (double newGlideSamples) noexcept
+        {
+            if (remaining > 0 && glideSamples > 0.0)
+            {
+                remaining = juce::jmax (1, juce::roundToInt ((double) remaining * newGlideSamples / glideSamples));
+                step = (target - current) / (double) remaining;
+            }
+
+            glideSamples = newGlideSamples;
+        }
+
+        void setCurrentAndTargetValue (double value) noexcept
+        {
+            current = target = value;
+            remaining = 0;
+        }
+
+        void setTargetValue (double value) noexcept
+        {
+            if (juce::exactlyEqual (value, target))
+                return;
+
+            target = value;
+            remaining = (int) glideSamples;
+
+            if (remaining <= 0)
+                current = target;
+            else
+                step = (target - current) / (double) remaining;
+        }
+
+        double getNextValue() noexcept
+        {
+            if (remaining > 0)
+                current = --remaining == 0 ? target : current + step;
+
+            return current;
+        }
+
+        double getCurrentValue() const noexcept { return current; }
+        bool isSmoothing() const noexcept { return remaining > 0; }
+
+    private:
+        double current = 0.0, target = 0.0, step = 0.0, glideSamples = 0.0;
+        int remaining = 0;
+    };
+
+    DelayGlide delay;
     juce::SmoothedValue<float> gain, feedback, leftGain, rightGain, enabledGain;
 
     double sampleRate = 44100.0;
-    float currentGlideSeconds = -1.0f;
     bool enabled = false;
     bool idle = true;
 };

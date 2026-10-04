@@ -32,7 +32,6 @@ void Tap::prepare (double newSampleRate, int maxDelaySamples)
         s->reset (sampleRate, parameterRampSeconds);
 
     enabledGain.reset (sampleRate, enableRampSeconds);
-    currentGlideSeconds = -1.0f;
 
     reset();
 }
@@ -72,12 +71,7 @@ void Tap::setSettings (const TapSettings& s, float glideSeconds, const GlitchGlo
             idle = false;
     }
 
-    if (! juce::approximatelyEqual (glideSeconds, currentGlideSeconds))
-    {
-        // reset() snaps the smoother to its target, so only do it when the glide time changes.
-        currentGlideSeconds = glideSeconds;
-        delay.reset (sampleRate, (double) glideSeconds);
-    }
+    delay.setGlideSamples ((double) glideSeconds * sampleRate);
 
     if (wasIdle || glideSeconds <= 0.0f)
         delay.setCurrentAndTargetValue (target);

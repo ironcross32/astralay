@@ -124,7 +124,12 @@ void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
                                            : envelope[(size_t) index] + (envelope[(size_t) index + 1] - envelope[(size_t) index]) * fraction;
 
         const auto gain = juce::jlimit (minEnvelopeGain, maxEnvelopeGain, shifted / (envelope[(size_t) k] + tiny));
-        const auto power = magnitude[(size_t) k] * magnitude[(size_t) k];
+
+        // The first and last bins appear once in the whole spectrum and every other bin twice, so
+        // they carry half the weight. Counted in full, a loop holding a constant offset, as short
+        // frozen loops do, gained level each time energy moved out of the first bin.
+        const auto weight = k == 0 || k == last ? 0.5f : 1.0f;
+        const auto power = weight * magnitude[(size_t) k] * magnitude[(size_t) k];
         powerBefore += power;
         powerAfter += power * gain * gain;
 

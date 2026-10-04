@@ -336,6 +336,78 @@ public:
             }
         }
 
+        beginTest ("LPC formant shifting doesn't build up in a frozen loop that holds a constant offset");
+        {
+            // A short loop rarely holds a whole number of cycles, so it sits on an offset. Noise on
+            // an offset stands in for that, in loops of 7 ms, 40 ms and 250 ms.
+            for (const auto delay : { 336.0f, 1920.0f, 12000.0f })
+            {
+                for (const auto seed : { 3, 7 })
+                {
+                    auto global = wetOnly();
+                    global.glitch.threshold = 1.0f;
+                    global.glitch.chunkSamples = 6000;
+                    global.reproducible = true;
+                    global.seed = seed;
+
+                    auto tap = singleTap (delay, 0.4f);
+
+                    Engine engine;
+                    setUp (engine, global, tap);
+
+                    TransportInfo transport;
+                    transport.playing = true;
+                    engine.setTransport (transport);
+
+                    const auto fill = (size_t) (2.0f * delay) + 9600;
+                    const auto freezeAt = (fill - 2400) / blockSize * blockSize;
+                    const auto glitchAt = (fill + (size_t) (2.0f * delay) + 4800) / blockSize * blockSize;
+
+                    juce::Random random (11);
+                    std::vector<float> left (glitchAt + 48000 * 20, 0.0f), right (left.size(), 0.0f);
+
+                    for (size_t i = 0; i < fill; ++i)
+                        left[i] = 0.2f + 0.2f * (random.nextFloat() - 0.5f);
+
+                    for (size_t start = 0; start < left.size(); start += blockSize)
+                    {
+                        if (start == freezeAt)
+                        {
+                            global.freeze = true;
+                            engine.setGlobalSettings (global);
+                        }
+
+                        if (start == glitchAt)
+                        {
+                            tap.glitch.probability[(size_t) GlitchType::lpcFormant] = 1.0f;
+                            engine.setTapSettings (0, tap);
+                        }
+
+                        const auto n = (int) std::min ((size_t) blockSize, left.size() - start);
+                        engine.process (left.data() + start, nullptr, left.data() + start, right.data() + start, n);
+                    }
+
+                    // Twenty seconds of one glitch after another. With the first bin of each frame
+                    // counted at twice its weight, these loops rose by 8 to 12 dB.
+                    const auto reference = (int) juce::jmin (delay + 2400.0f, 24000.0f);
+                    const auto before = rms (left, (int) glitchAt - reference, reference);
+                    const auto level = rms (left, (int) left.size() - 24000, 24000) / before;
+
+                    auto peak = 0.0f;
+
+                    for (size_t i = glitchAt; i < left.size(); ++i)
+                        peak = juce::jmax (peak, std::abs (left[i]));
+
+                    const auto message = "Loop of " + juce::String (delay) + " samples, seed " + juce::String (seed)
+                                             + ": level changed by a factor of " + juce::String (level)
+                                             + ", peak " + juce::String (peak / before) + " times the level before";
+
+                    expect (level > 0.1f && level < 1.2f, message);
+                    expect (peak / before < 4.0f, message);
+                }
+            }
+        }
+
         beginTest ("A frozen loop keeps its treble through varispeed glitches and at awkward tap times");
         {
             // How much the signal moves from sample to sample: a measure weighted to the treble.

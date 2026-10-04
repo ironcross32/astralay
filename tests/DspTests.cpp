@@ -552,6 +552,56 @@ public:
             }
         }
 
+        beginTest ("With host sync on, a glitch that always fires runs without gaps at any tempo");
+        {
+            // Chunks of a sixteenth note are rarely a whole number of samples. At the tempos where
+            // they round up, a glitch counted in rounded chunks outlasted the beat it should have
+            // ended on by a fraction of a sample, and so couldn't fire again there.
+            for (const auto bpm : { 97.0, 130.0, 133.0, 140.0 })
+            {
+                for (const auto length : { 1.0f, 3.0f })
+                {
+                    const auto samplesPerQuarter = testSampleRate * 60.0 / bpm;
+
+                    TransportInfo transport;
+                    transport.playing = true;
+                    transport.hasPosition = true;
+                    transport.synced = true;
+                    transport.chunkQuarters = 0.25;
+                    transport.samplesPerQuarter = samplesPerQuarter;
+
+                    auto global = wetOnly();
+                    global.glitch.threshold = 1.0f;
+                    global.glitch.chunkSamples = (int) std::llround (transport.chunkQuarters * samplesPerQuarter);
+                    global.glitch.lengthChunks = { length, length };
+
+                    auto tap = singleTap (4800.0f, 0.4f);
+                    tap.glitch.probability[(size_t) GlitchType::ringModulation] = 1.0f;
+
+                    Engine engine;
+                    setUp (engine, global, tap);
+
+                    const auto input = sineBurst (48000 * 20, 48000 * 20, 440.0f);
+                    std::vector<float> left (input), right (input.size(), 0.0f);
+                    auto blocks = 0, running = 0;
+
+                    for (size_t start = 0; start < input.size(); start += 64)
+                    {
+                        transport.ppq = (double) start / samplesPerQuarter;
+                        engine.setTransport (transport);
+                        engine.process (left.data() + start, nullptr, left.data() + start, right.data() + start, 64);
+
+                        ++blocks;
+                        running += engine.getTap (0).getGlitches().isActive (GlitchType::ringModulation) ? 1 : 0;
+                    }
+
+                    const auto share = (float) running / (float) blocks;
+                    expect (share > 0.99f, juce::String (bpm) + " BPM, " + juce::String (length) + " chunks long: running "
+                                               + juce::String (100.0f * share, 1) + "% of the time");
+                }
+            }
+        }
+
         beginTest ("An input sample that isn't a number is treated as silence and leaves nothing behind");
         {
             const auto nan = std::numeric_limits<float>::quiet_NaN();

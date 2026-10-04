@@ -6,6 +6,7 @@ namespace astralay::dsp
 namespace
 {
     constexpr double fadeSeconds = 0.005;
+    constexpr int boundarySlackSamples = 8;   // How far a glitch's count may drift from the chunk grid.
     constexpr double reverseCapSeconds = 2.0;
     constexpr double sliceCapSeconds = 2.0;
     constexpr double grainHistorySeconds = 1.0;
@@ -146,6 +147,33 @@ int GlitchChain::getNumActive() const noexcept
 
 void GlitchChain::onChunkBoundary()
 {
+    // A glitch lasts a whole number of chunks and is counted out in samples. With host sync on,
+    // the chunks follow the host's beats and are rarely a whole number of samples long, so the
+    // count drifts off the boundaries by a sample or so. A glitch counted a fraction too long was
+    // still running at the boundary it should have ended on, and couldn't fire again there. So at
+    // each boundary a running glitch's remaining time is set back to a whole number of chunks,
+    // and one with none left ends here. A glitch further off than that is left to run out: its
+    // chunk length has changed under it, and cutting it short would click.
+    const auto chunk = juce::jmax (1, global.chunkSamples);
+
+    for (auto& slot : slots)
+    {
+        if (! slot.active)
+            continue;
+
+        const auto remaining = slot.length - slot.elapsed;
+        const auto chunksLeft = (remaining + chunk / 2) / chunk;
+        const auto drift = remaining - chunksLeft * chunk;
+
+        if (std::abs (drift) > boundarySlackSamples)
+            continue;
+
+        if (chunksLeft == 0)
+            slot.active = false;
+        else
+            slot.length -= drift;
+    }
+
     for (int i = 0; i < numGlitchTypes; ++i)
     {
         const auto type = (GlitchType) i;

@@ -1,6 +1,8 @@
 #include <juce_core/juce_core.h>
 #include "dsp/Engine.h"
 #include "dsp/GlitchChain.h"
+#include "dsp/Seed.h"
+#include <limits>
 
 namespace
 {
@@ -8,6 +10,21 @@ namespace
 
     constexpr double rate = 48000.0;
     constexpr int blockSize = 256;
+
+    // Constant evaluation rejects signed overflow even when a runtime build happens to wrap it.
+    // Fixed expected values cover negative seeds, multiplication overflow, the signed boundary,
+    // and unsigned addition wrapping back through zero.
+    constexpr auto minSeed = std::numeric_limits<std::int64_t>::min();
+    constexpr auto maxSeed = std::numeric_limits<std::int64_t>::max();
+    static_assert (seedForTap (minSeed, 0) == minSeed);
+    static_assert (seedForTap (minSeed, 15) == minSeed + 15);
+    static_assert (seedForTap (maxSeed, 0) == 9223372036853775805LL);
+    static_assert (seedForTap (maxSeed, 15) == 9223372036853775820LL);
+    static_assert (seedForTap (-1, 15) == -999988);
+    static_assert (seedForTap (-8974618439281595224LL, 0) == 9223372036854775800LL);
+    static_assert (seedForTap (-8974618439281595224LL, 15) == -9223372036854775801LL);
+    static_assert (seedForTap (248753597573180584LL, 0) == -8);
+    static_assert (seedForTap (248753597573180584LL, 15) == 7);
 
     std::vector<float> sine (int length, float frequency, float amplitude = 0.5f)
     {
@@ -172,6 +189,20 @@ public:
 
             seeded.global.seed = 43;
             expect (first != runEngine (seeded, input));
+        }
+
+        beginTest ("Defined seed wrapping preserves user-seeded sequences and keeps taps distinct");
+        {
+            for (const auto seed : { 0, 1, 42, 9999 })
+                for (int tap = 0; tap < Engine::numTaps; ++tap)
+                    expectEquals (seedForTap (seed, (std::uint64_t) tap), (std::int64_t) seed * 1000003 + tap);
+
+            for (const auto seed : { minSeed, maxSeed, (std::int64_t) -8974618439281595224LL,
+                                     (std::int64_t) 248753597573180584LL })
+            {
+                for (int tap = 1; tap < Engine::numTaps; ++tap)
+                    expect (seedForTap (seed, (std::uint64_t) tap) != seedForTap (seed, (std::uint64_t) (tap - 1)));
+            }
         }
 
         beginTest ("No more glitches run at once than the maximum");

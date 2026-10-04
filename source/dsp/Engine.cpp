@@ -1,5 +1,6 @@
 #include "Engine.h"
 #include "Finite.h"
+#include "Seed.h"
 
 namespace astralay::dsp
 {
@@ -45,7 +46,7 @@ void Engine::restartRandomness (juce::int64 baseSeed)
 {
     // Each tap has its own sequence, so enabling one tap doesn't change another's glitches.
     for (size_t t = 0; t < taps.size(); ++t)
-        taps[t].restartGlitches (baseSeed * 1000003 + (juce::int64) t);
+        taps[t].restartGlitches (seedForTap (baseSeed, t));
 
     samplesToChunk = 0;
 }

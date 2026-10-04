@@ -107,6 +107,35 @@ public:
                     expectWithinAbsoluteError (output[(size_t) i], input[(size_t) (i - latency)], 1.0e-3f);
             }
 
+            beginTest (methodName + ": a pass over a steady tone keeps its level");
+            {
+                std::vector<float> input ((size_t) length);
+
+                for (int i = 0; i < length; ++i)
+                {
+                    const auto t = juce::MathConstants<float>::twoPi * (float) i / (float) rate;
+                    input[(size_t) i] = 0.3f * std::sin (440.0f * t) + 0.15f * std::sin (1320.0f * t);
+                }
+
+                const auto power = [] (const std::vector<float>& signal)
+                {
+                    auto sum = 0.0;
+
+                    for (int i = startAt + 8000; i < startAt + 32000; ++i)
+                        sum += (double) signal[(size_t) i] * signal[(size_t) i];
+
+                    return sum;
+                };
+
+                // A loop makes dozens of passes a second, so a fraction of a decibel lost on each
+                // soon empties it. LPC lost up to 2.3 dB here before its gain was smoothed.
+                for (const auto semitones : { -12.0f, -5.0f, -2.0f, 2.0f, 5.0f, 12.0f })
+                {
+                    const auto change = 10.0 * std::log10 (power (shift (method, input, semitones, startAt)) / power (input));
+                    expect (change > -0.3 && change < 0.1, juce::String (semitones) + " semitones changed the level by " + juce::String (change, 2) + " dB");
+                }
+            }
+
             beginTest (methodName + ": an octave up moves the formant and keeps the pitch");
             {
                 const auto input = vowel (length, 800.0f);

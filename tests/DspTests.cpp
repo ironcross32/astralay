@@ -69,6 +69,100 @@ namespace
         engine.setTapSettings (0, tap);
         engine.reset();
     }
+
+    /** How a frozen loop changed over a run of glitches: its level and its highest peak, both
+        relative to the level before the glitches began, and how much its treble changed, measured
+        by how far the signal moves from one sample to the next.
+    */
+    struct LoopChange
+    {
+        float level = 0.0f, peak = 0.0f, treble = 0.0f;
+
+        juce::String describe() const
+        {
+            return "level changed by a factor of " + juce::String (level) + ", treble by " + juce::String (treble)
+                       + ", peak " + juce::String (peak) + " times the level before";
+        }
+    };
+
+    /** Fills a tap's loop from source (a function of the sample index), freezes it, then lets the
+        glitches in the tap's settings fire at every chunk for the given number of seconds.
+    */
+    template <typename Source>
+    LoopChange runFrozenLoop (float delay, int seed, double seconds, TapGlitchSettings glitch, Source&& source)
+    {
+        auto global = wetOnly();
+        global.glitch.threshold = 1.0f;
+        global.glitch.chunkSamples = 6000;
+        global.reproducible = true;
+        global.seed = seed;
+
+        // The glitches start once the loop has closed.
+        auto tap = singleTap (delay, 0.4f);
+
+        Engine engine;
+        setUp (engine, global, tap);
+
+        TransportInfo transport;
+        transport.playing = true;
+        engine.setTransport (transport);
+
+        const auto fill = (size_t) (2.0f * delay) + 9600;
+        const auto freezeAt = (fill - 2400) / blockSize * blockSize;
+        const auto glitchAt = (fill + (size_t) (2.0f * delay) + 4800) / blockSize * blockSize;
+
+        std::vector<float> left (glitchAt + (size_t) (seconds * testSampleRate), 0.0f), right (left.size(), 0.0f);
+
+        for (size_t i = 0; i < fill; ++i)
+            left[i] = source (i);
+
+        for (size_t start = 0; start < left.size(); start += blockSize)
+        {
+            if (start == freezeAt)
+            {
+                global.freeze = true;
+                engine.setGlobalSettings (global);
+            }
+
+            if (start == glitchAt)
+            {
+                tap.glitch = glitch;
+                engine.setTapSettings (0, tap);
+            }
+
+            const auto n = (int) std::min ((size_t) blockSize, left.size() - start);
+            engine.process (left.data() + start, nullptr, left.data() + start, right.data() + start, n);
+        }
+
+        const auto reference = (int) juce::jmin (delay + 2400.0f, 24000.0f);
+        const auto before = rms (left, (int) glitchAt - reference, reference);
+
+        const auto movement = [&left] (int from, int length)
+        {
+            auto sum = 0.0;
+
+            for (int i = from + 1; i < from + length; ++i)
+                sum += std::pow ((double) left[(size_t) i] - left[(size_t) i - 1], 2.0);
+
+            return (float) std::sqrt (sum / length);
+        };
+
+        LoopChange change;
+        change.level = rms (left, (int) left.size() - 24000, 24000) / before;
+        change.treble = movement ((int) left.size() - 24000, 24000) / movement ((int) glitchAt - reference, reference);
+
+        for (size_t i = glitchAt; i < left.size(); ++i)
+            change.peak = juce::jmax (change.peak, std::abs (left[i]) / before);
+
+        return change;
+    }
+
+    /** A tone with a third harmonic, as a function of the sample index. */
+    float tone (size_t i)
+    {
+        const auto t = juce::MathConstants<double>::twoPi * (double) i / testSampleRate;
+        return 0.3f * (float) std::sin (440.0 * t) + 0.15f * (float) std::sin (1320.0 * t);
+    }
 }
 
 class DspTests final : public juce::UnitTest
@@ -344,67 +438,106 @@ public:
             {
                 for (const auto seed : { 3, 7 })
                 {
-                    auto global = wetOnly();
-                    global.glitch.threshold = 1.0f;
-                    global.glitch.chunkSamples = 6000;
-                    global.reproducible = true;
-                    global.seed = seed;
-
-                    auto tap = singleTap (delay, 0.4f);
-
-                    Engine engine;
-                    setUp (engine, global, tap);
-
-                    TransportInfo transport;
-                    transport.playing = true;
-                    engine.setTransport (transport);
-
-                    const auto fill = (size_t) (2.0f * delay) + 9600;
-                    const auto freezeAt = (fill - 2400) / blockSize * blockSize;
-                    const auto glitchAt = (fill + (size_t) (2.0f * delay) + 4800) / blockSize * blockSize;
+                    TapGlitchSettings glitch;
+                    glitch.probability[(size_t) GlitchType::lpcFormant] = 1.0f;
 
                     juce::Random random (11);
-                    std::vector<float> left (glitchAt + 48000 * 20, 0.0f), right (left.size(), 0.0f);
-
-                    for (size_t i = 0; i < fill; ++i)
-                        left[i] = 0.2f + 0.2f * (random.nextFloat() - 0.5f);
-
-                    for (size_t start = 0; start < left.size(); start += blockSize)
-                    {
-                        if (start == freezeAt)
-                        {
-                            global.freeze = true;
-                            engine.setGlobalSettings (global);
-                        }
-
-                        if (start == glitchAt)
-                        {
-                            tap.glitch.probability[(size_t) GlitchType::lpcFormant] = 1.0f;
-                            engine.setTapSettings (0, tap);
-                        }
-
-                        const auto n = (int) std::min ((size_t) blockSize, left.size() - start);
-                        engine.process (left.data() + start, nullptr, left.data() + start, right.data() + start, n);
-                    }
+                    const auto change = runFrozenLoop (delay, seed, 20.0, glitch,
+                                                       [&random] (size_t) { return 0.2f + 0.2f * (random.nextFloat() - 0.5f); });
 
                     // Twenty seconds of one glitch after another. With the first bin of each frame
                     // counted at twice its weight, these loops rose by 8 to 12 dB.
-                    const auto reference = (int) juce::jmin (delay + 2400.0f, 24000.0f);
-                    const auto before = rms (left, (int) glitchAt - reference, reference);
-                    const auto level = rms (left, (int) left.size() - 24000, 24000) / before;
+                    const auto message = "Loop of " + juce::String (delay) + " samples, seed " + juce::String (seed) + ": " + change.describe();
 
-                    auto peak = 0.0f;
-
-                    for (size_t i = glitchAt; i < left.size(); ++i)
-                        peak = juce::jmax (peak, std::abs (left[i]));
-
-                    const auto message = "Loop of " + juce::String (delay) + " samples, seed " + juce::String (seed)
-                                             + ": level changed by a factor of " + juce::String (level)
-                                             + ", peak " + juce::String (peak / before) + " times the level before";
-
-                    expect (level > 0.1f && level < 1.2f, message);
-                    expect (peak / before < 4.0f, message);
+                    expect (change.level > 0.1f && change.level < 1.2f, message);
+                    expect (change.peak < 4.0f, message);
                 }
+            }
+        }
+
+        beginTest ("LPC formant shifting doesn't empty a frozen loop of a tone");
+        {
+            // Downward shifts only. With the gain free to change inside a partial, each pass cost
+            // up to 2 dB and these loops fell by 50 dB or more within five seconds.
+            for (const auto delay : { 336.0f, 960.0f })
+            {
+                TapGlitchSettings glitch;
+                glitch.probability[(size_t) GlitchType::lpcFormant] = 1.0f;
+                glitch.lpcShift = { -5.0f, -0.5f };
+
+                const auto change = runFrozenLoop (delay, 3, 20.0, glitch, tone);
+                expect (change.level > 0.3f && change.level < 1.2f, "Loop of " + juce::String (delay) + " samples: " + change.describe());
+            }
+        }
+
+        beginTest ("A formant glitch's fades neither add to a short frozen loop nor wear it down");
+        {
+            // No shift at all, so only the fades in and out can change the loop. Scaled up to keep
+            // their level, they fed whichever frequencies the loop and its shifted copy shared.
+            for (const auto type : { GlitchType::lpcFormant, GlitchType::cepstralFormant })
+            {
+                for (const auto delay : { 336.0f, 960.0f, 1500.0f })
+                {
+                    TapGlitchSettings glitch;
+                    glitch.probability[(size_t) type] = 1.0f;
+                    glitch.lpcShift = { 0.0f, 0.0f };
+                    glitch.cepstralShift = { 0.0f, 0.0f };
+
+                    const auto message = "Glitch " + juce::String ((int) type) + ", loop of " + juce::String (delay) + " samples";
+
+                    const auto steady = runFrozenLoop (delay, 3, 30.0, glitch, tone);
+                    expect (steady.level > 0.9f && steady.level < 1.05f, message + ", tone: " + steady.describe());
+
+                    juce::Random random (11);
+                    const auto noisy = runFrozenLoop (delay, 3, 30.0, glitch, [&random] (size_t) { return 0.5f * (random.nextFloat() - 0.5f); });
+                    expect (noisy.level > 0.9f && noisy.level < 1.05f, message + ", noise: " + noisy.describe());
+                }
+            }
+        }
+
+        beginTest ("A formant glitch moves a frozen loop's formants to the value picked and no further");
+        {
+            for (const auto type : { GlitchType::lpcFormant, GlitchType::cepstralFormant })
+            {
+                const auto glitchName = "Glitch " + juce::String ((int) type);
+
+                // Upward shifts only, one glitch after another for 30 seconds. Added on every pass,
+                // these raised the treble of a loop of a tone by 13 to 39 dB and its peaks by 20 dB.
+                for (const auto delay : { 336.0f, 960.0f })
+                {
+                    TapGlitchSettings glitch;
+                    glitch.probability[(size_t) type] = 1.0f;
+                    glitch.lpcShift = { 0.5f, 5.0f };
+                    glitch.cepstralShift = { 0.5f, 5.0f };
+
+                    const auto change = runFrozenLoop (delay, 3, 30.0, glitch, tone);
+                    const auto message = glitchName + ", loop of " + juce::String (delay) + " samples: " + change.describe();
+
+                    expect (change.level > 0.7f && change.level < 1.1f, message);
+                    expect (change.treble < 2.0f, message);
+                    expect (change.peak < 4.0f, message);
+                }
+
+                // The loop still ends up where it was sent: brighter sent up than sent down.
+                const auto sentTo = [type] (float semitones)
+                {
+                    TapGlitchSettings glitch;
+                    glitch.probability[(size_t) type] = 1.0f;
+                    glitch.lpcShift = { semitones, semitones };
+                    glitch.cepstralShift = { semitones, semitones };
+
+                    juce::Random random (11);
+                    auto smoothed = 0.0f;
+
+                    return runFrozenLoop (960.0f, 3, 10.0, glitch, [&] (size_t)
+                    {
+                        smoothed += 0.05f * (random.nextFloat() - 0.5f - smoothed);
+                        return 2.0f * smoothed;
+                    });
+                };
+
+                const auto up = sentTo (7.0f), down = sentTo (-7.0f);
+                expect (up.treble > 1.15f * down.treble, glitchName + " up: " + up.describe() + "; down: " + down.describe());
             }
         }
 

@@ -49,6 +49,8 @@ void GlitchChain::prepare (double newSampleRate, double maxLoopSeconds)
     pitchInput.prepare (samples (2.0 * pitchWindowSeconds) + 4);
     pitchTrack.prepare (samples (2.0 * pitchWindowSeconds) + 4);
     loopTrack.assign ((size_t) (samples (maxLoopSeconds) / loopTrackStep + 4), 0.0f);
+    formantLoopTrack.assign (loopTrack.size(), 0.0f);
+    formantTrackingSpan = (int) formantLoopTrack.size() * loopTrackStep;
     pitchSmoothing = 1.0f - std::exp (-1.0f / (float) (pitchLevelSeconds * sampleRate));
     pitchMeanSmoothing = 1.0f - std::exp (-1.0f / (float) (pitchMeanSeconds * sampleRate));
     fmInput.prepare (samples (fmHistorySeconds));
@@ -58,6 +60,10 @@ void GlitchChain::prepare (double newSampleRate, double maxLoopSeconds)
 
     lpcShifter.prepare (sampleRate, FormantShifter::Method::lpc);
     cepstralShifter.prepare (sampleRate, FormantShifter::Method::cepstral);
+
+    // As far back as the middle of a frame taken from two frames back in a short loop.
+    lpcTrack.prepare (3 * lpcShifter.getFrameSize() + 8);
+    cepstralTrack.prepare (3 * cepstralShifter.getFrameSize() + 8);
 
     reset();
 }
@@ -77,32 +83,38 @@ void GlitchChain::reset()
         voice = {};
 
     pitchTrack.clear();
+    lpcTrack.clear();
+    cepstralTrack.clear();
     std::fill (loopTrack.begin(), loopTrack.end(), 0.0f);
+    std::fill (formantLoopTrack.begin(), formantLoopTrack.end(), 0.0f);
+    formantOffset = 0.0f;
+    formantTrackingLeft = 0;
     pitchOffset = pitchArriving = 0.0f;
     pitchMean = 0.0f;
     pitchHoming = false;
 }
 
-float GlitchChain::readLoopTrack() const noexcept
+float GlitchChain::readLoopTrack (const std::vector<float>& track) const noexcept
 {
-    const auto size = (int) loopTrack.size();
+    const auto size = (int) track.size();
     const auto back = juce::jmax (1, juce::roundToInt (juce::jmin (loopSamples, 1.0e8f) / (float) loopTrackStep));
 
     // A loop longer than the track is no loop at all, as when setLoop() was never called.
     if (back >= size)
         return 0.0f;
 
-    return loopTrack[(size_t) ((loopTrackIndex - back + size) % size)];
+    return track[(size_t) ((loopTrackIndex - back + size) % size)];
 }
 
-void GlitchChain::writeLoopTrack (float semitones) noexcept
+void GlitchChain::writeLoopTracks (float pitchSemitones, float formantSemitones) noexcept
 {
     if (++loopTrackCount < loopTrackStep)
         return;
 
     loopTrackCount = 0;
     loopTrackIndex = (loopTrackIndex + 1) % (int) loopTrack.size();
-    loopTrack[(size_t) loopTrackIndex] = semitones;
+    loopTrack[(size_t) loopTrackIndex] = pitchSemitones;
+    formantLoopTrack[(size_t) loopTrackIndex] = formantSemitones;
 }
 
 void GlitchChain::setLoop (float newLoopSamples, float newLoopGain) noexcept
@@ -290,22 +302,24 @@ void GlitchChain::start (GlitchType type)
 
         case GlitchType::lpcFormant:
         {
-            const auto semitones = settings.lpcShift.pick (random);
-            lpcShifter.start (semitones);
-            picks[0] = picked (semitones, settings.lpcShift);
+            lpcTarget = settings.lpcShift.pick (random);
+            lpcShifter.start (lpcTarget, loopSamples);
+            picks = { picked (lpcTarget, settings.lpcShift), diagnostics::Pick { formantOffset, formantOffset, formantOffset } };
             break;
         }
 
         case GlitchType::cepstralFormant:
         {
-            const auto semitones = settings.cepstralShift.pick (random);
-            cepstralShifter.start (semitones);
-            picks[0] = picked (semitones, settings.cepstralShift);
+            cepstralTarget = settings.cepstralShift.pick (random);
+            cepstralShifter.start (cepstralTarget, loopSamples);
+            picks = { picked (cepstralTarget, settings.cepstralShift), diagnostics::Pick { formantOffset, formantOffset, formantOffset } };
             break;
         }
     }
 
-    stageEdges[(size_t) type].reset();
+    if (type == GlitchType::pitch)
+        pitchEdges.reset();
+
     probe.glitchStarted (type, slot.length, picks, type == GlitchType::pitch && pitchIsVarispeed);
 }
 
@@ -341,15 +355,22 @@ float GlitchChain::applyPitchStage (float dry, float wet) noexcept
     const auto gain = envelope (GlitchType::pitch);
     pitchOffset = pitchArriving + (pitchWetOffset - pitchArriving) * gain;
 
-    const auto y = levelMix (wet, gain, dry, stageEdges[(size_t) GlitchType::pitch]);
+    const auto y = levelMix (wet, gain, dry, pitchEdges);
     probe.stage (GlitchType::pitch, y);
     return y;
 }
 
-float GlitchChain::applyLevelStage (GlitchType type, float dry, float wet) noexcept
+float GlitchChain::applyFormantStage (GlitchType type, FormantShifter& shifter, const HistoryBuffer& track, float target, float dry) noexcept
 {
-    // As applyStage, but the fades in and out keep their level.
-    const auto y = levelMix (wet, envelope (type), dry, stageEdges[(size_t) type]);
+    // Each frame is shifted by what is left between the audio in it and the target, so audio that
+    // has already been round the loop and moved passes through as it is.
+    shifter.setShift (target - track.back (shifter.getFrameCentreLag()));
+
+    const auto wet = shifter.next();
+    const auto gain = envelope (type);
+    formantOffset += (target - formantOffset) * gain;
+
+    const auto y = dry + (wet - dry) * gain;
     probe.stage (type, y);
     return y;
 }
@@ -375,7 +396,7 @@ float GlitchChain::process (float input) noexcept
 
     // The pitch of the audio arriving: what left here one trip round the loop ago, pulled towards
     // the original pitch by however much new input has been mixed in since.
-    pitchArriving = loopGain * readLoopTrack();
+    pitchArriving = loopGain * readLoopTrack (loopTrack);
     pitchOffset = pitchArriving;
 
     pitchMean += pitchMeanSmoothing * (y - pitchMean);
@@ -396,16 +417,36 @@ float GlitchChain::process (float input) noexcept
         probe.stage (GlitchType::pitch, y);
     }
 
-    writeLoopTrack (pitchOffset);
     probe.setPitchOffset (pitchOffset);
+
+    // Where the formants of the audio arriving sit: where they were left one trip round the loop
+    // ago, pulled back towards their own place by however much new input has been mixed in since.
+    const auto shiftingFormants = isActive (GlitchType::lpcFormant) || isActive (GlitchType::cepstralFormant);
+    const auto trackingFormants = shiftingFormants || formantTrackingLeft > 0;
+
+    formantOffset = trackingFormants ? loopGain * readLoopTrack (formantLoopTrack) : 0.0f;
+
+    // The formant shifters line their output up with a short loop's repeats, so a plain fade loses
+    // next to nothing there. Scaling the fade up to keep its level, as the pitch stage does, favours
+    // whichever frequencies the two signals share, and round a loop those frequencies keep growing.
+    if (trackingFormants)
+        lpcTrack.push (formantOffset);
 
     lpcShifter.push (y);
     if (isActive (GlitchType::lpcFormant))
-        y = applyLevelStage (GlitchType::lpcFormant, y, lpcShifter.next());
+        y = applyFormantStage (GlitchType::lpcFormant, lpcShifter, lpcTrack, lpcTarget, y);
+
+    if (trackingFormants)
+        cepstralTrack.push (formantOffset);
 
     cepstralShifter.push (y);
     if (isActive (GlitchType::cepstralFormant))
-        y = applyLevelStage (GlitchType::cepstralFormant, y, cepstralShifter.next());
+        y = applyFormantStage (GlitchType::cepstralFormant, cepstralShifter, cepstralTrack, cepstralTarget, y);
+
+    if (trackingFormants)
+        formantTrackingLeft = shiftingFormants || std::abs (formantOffset) > 1.0e-4f ? formantTrackingSpan : formantTrackingLeft - 1;
+
+    writeLoopTracks (pitchOffset, formantOffset);
 
     if (isActive (GlitchType::ringModulation))
         y = applyStage (GlitchType::ringModulation, y, ringModulate (y));

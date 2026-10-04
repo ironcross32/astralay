@@ -80,7 +80,7 @@ private:
     float envelope (GlitchType type) noexcept;
     float applyStage (GlitchType type, float dry, float wet) noexcept;
     float applyPitchStage (float dry, float wet) noexcept;
-    float applyLevelStage (GlitchType type, float dry, float wet) noexcept;
+    float applyFormantStage (GlitchType type, FormantShifter& shifter, const HistoryBuffer& track, float target, float dry) noexcept;
 
     float reverse() noexcept;
     float stutter() noexcept;
@@ -157,7 +157,7 @@ private:
     }
 
     Likeness pitchHeads;                              // The shifter's two read heads.
-    std::array<Likeness, numGlitchTypes> stageEdges;  // A stage's output and the audio it fades to and from.
+    Likeness pitchEdges;                              // The shifter's output and the audio it fades to and from.
     float loopSamples = 1.0e9f, loopGain = 0.0f;
 
     // The estimate of where the loop's pitch has got to travels with the audio. Each sample's
@@ -172,8 +172,8 @@ private:
     int loopTrackIndex = 0, loopTrackCount = 0;
     static constexpr int loopTrackStep = 16;
 
-    float readLoopTrack() const noexcept;
-    void writeLoopTrack (float semitones) noexcept;
+    float readLoopTrack (const std::vector<float>& track) const noexcept;
+    void writeLoopTracks (float pitchSemitones, float formantSemitones) noexcept;
 
     float pitchOffset = 0.0f;       // Of the audio leaving the pitch stage now.
     float pitchArriving = 0.0f;     // Of the audio reaching it now.
@@ -192,8 +192,21 @@ private:
 
     PitchWalls pitchWalls() const noexcept;
 
-    // Formants
+    // Formants. The value a formant glitch picks is where the loop's formants are moved to, not a
+    // shift added on every pass, which round a loop soon carried them out of any range and left
+    // the audio thin and spiky. So the chain keeps an estimate of how far the loop's formants sit
+    // from where they began, travelling with the audio as the pitch estimate does: formantLoopTrack
+    // mirrors the tap's delay line, and lpcTrack and cepstralTrack hold what reached each shifter,
+    // so that each frame is shifted by only what is left between its audio and the target.
     FormantShifter lpcShifter, cepstralShifter;
+    std::vector<float> formantLoopTrack;
+    HistoryBuffer lpcTrack, cepstralTrack;
+    float formantOffset = 0.0f;     // Of the audio at the point the chain has reached, in semitones.
+    float lpcTarget = 0.0f, cepstralTarget = 0.0f;
+
+    // The estimate is only kept up while it can be other than zero: while a formant glitch runs,
+    // and after it for as long as anything it left could still be coming round the loop.
+    int formantTrackingLeft = 0, formantTrackingSpan = 0;
 
     // Ring modulation
     float ringFrequency = 100.0f, ringPhase = 0.0f;

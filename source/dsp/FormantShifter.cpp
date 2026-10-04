@@ -1,4 +1,4 @@
-﻿#include "FormantShifter.h"
+#include "FormantShifter.h"
 
 namespace astralay::dsp
 {
@@ -9,6 +9,7 @@ namespace
     constexpr float maxEnvelopeGain = 20.0f;  // About +26 dB, so empty bands aren't boosted into noise.
     constexpr float minEnvelopeGain = 0.05f;
     constexpr float tiny = 1.0e-9f;
+    constexpr int gainSmoothing = 4;        // Bins either side that a bin's gain is averaged over.
 }
 
 void FormantShifter::prepare (double sampleRate, Method newMethod)
@@ -40,13 +41,15 @@ void FormantShifter::prepare (double sampleRate, Method newMethod)
     work.assign ((size_t) frameSize * 2, 0.0f);
     magnitude.assign ((size_t) bins, 0.0f);
     envelope.assign ((size_t) bins, 0.0f);
+    gains.assign ((size_t) bins, 0.0f);
     lpcCoefficients.assign ((size_t) lpcOrder + 1, 0.0);
     autocorrelation.assign ((size_t) lpcOrder + 1, 0.0);
 
     output.assign ((size_t) juce::nextPowerOfTwo (frameSize * 2), 0.0f);
     outputMask = (int) output.size() - 1;
 
-    history.prepare (frameSize + overlap * hopSize + 8);
+    maxAlignedLoop = 2 * frameSize;
+    history.prepare (frameSize + overlap * hopSize + maxAlignedLoop + 8);
 
     reset();
 }
@@ -60,9 +63,22 @@ void FormantShifter::reset()
     primed = false;
 }
 
-void FormantShifter::start (float semitones)
+void FormantShifter::start (float semitones, float loopSamples)
 {
-    ratio = std::pow (2.0f, semitones / 12.0f);
+    shift = semitones;
+
+    // Output lags input by a frame less a sample. In a short loop, which repeats itself, frames are
+    // taken from further back by whatever makes that lag a whole number of trips round the loop, so
+    // the shifted audio lines up with the audio it fades in over and out to.
+    lookBack = 0;
+
+    if (loopSamples >= 1.0f && loopSamples <= (float) maxAlignedLoop)
+    {
+        const auto loop = juce::jmax (1, juce::roundToInt (loopSamples));
+        const auto lag = frameSize - 1;
+        lookBack = (lag + loop - 1) / loop * loop - lag;
+    }
+
     std::fill (output.begin(), output.end(), 0.0f);
     readPosition = 0;
     samplesSinceHop = 0;
@@ -95,9 +111,9 @@ float FormantShifter::next() noexcept
 
 void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
 {
-    // Window the frame that ends endsSamplesAgo samples back.
+    // Window the frame that ends endsSamplesAgo samples back, or its match earlier in a short loop.
     for (int i = 0; i < frameSize; ++i)
-        spectrum[(size_t) i] = history.back (endsSamplesAgo + frameSize - 1 - i) * window[(size_t) i];
+        spectrum[(size_t) i] = history.back (lookBack + endsSamplesAgo + frameSize - 1 - i) * window[(size_t) i];
 
     std::fill (spectrum.begin() + frameSize, spectrum.end(), 0.0f);
     fft->forward (spectrum.data(), spectrum.data());
@@ -113,7 +129,7 @@ void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
 
     // Replace the envelope with a copy stretched by the ratio: the formant at bin k moves to k * ratio.
     const auto last = bins - 1;
-    auto powerBefore = 0.0f, powerAfter = 0.0f;
+    const auto ratio = std::exp2 (shift / 12.0f);
 
     for (int k = 0; k < bins; ++k)
     {
@@ -123,7 +139,28 @@ void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
         const auto shifted = index >= last ? envelope[(size_t) last]
                                            : envelope[(size_t) index] + (envelope[(size_t) index + 1] - envelope[(size_t) index]) * fraction;
 
-        const auto gain = juce::jlimit (minEnvelopeGain, maxEnvelopeGain, shifted / (envelope[(size_t) k] + tiny));
+        // In decibels, near enough, for the averaging below.
+        gains[(size_t) k] = std::log (juce::jlimit (minEnvelopeGain, maxEnvelopeGain, shifted / (envelope[(size_t) k] + tiny)));
+    }
+
+    auto powerBefore = 0.0f, powerAfter = 0.0f;
+
+    for (int k = 0; k < bins; ++k)
+    {
+        // Each bin's gain is averaged with its neighbours', nearer ones counting for more. One
+        // partial covers about four bins of a frame. An envelope with features narrower than that,
+        // as LPC's has on tonal audio, would change the gain inside a partial; the frames then no
+        // longer overlap cleanly, and a pass costs up to 2 dB that the sums below can't see.
+        auto sum = 0.0f, total = 0.0f;
+
+        for (int offset = -gainSmoothing; offset <= gainSmoothing; ++offset)
+        {
+            const auto share = (float) (gainSmoothing + 1 - std::abs (offset));
+            sum += share * gains[(size_t) juce::jlimit (0, last, k + offset)];
+            total += share;
+        }
+
+        const auto gain = std::exp (sum / total);
 
         // The first and last bins appear once in the whole spectrum and every other bin twice, so
         // they carry half the weight. Counted in full, a loop holding a constant offset, as short

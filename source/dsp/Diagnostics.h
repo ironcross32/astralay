@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 #include <array>
 #include <cstring>
+#include "Finite.h"
 #include "Glitch.h"
 
 // Set by CMake: 1 in Debug builds and when the ASTRALAY_DIAGNOSTICS option is on. Without it the
@@ -51,14 +52,6 @@ struct Event
     std::array<float, 8> values {};
     std::array<float, numGlitchTypes> stages {};
 };
-
-inline bool isNonFinite (float x) noexcept
-{
-    // By its bits, since fast-math builds may assume every float is finite.
-    juce::uint32 bits;
-    std::memcpy (&bits, &x, sizeof (bits));
-    return (bits & 0x7f800000u) == 0x7f800000u;
-}
 
 /** Carries events from the audio thread to the thread that writes the log, without locking. */
 class Sink

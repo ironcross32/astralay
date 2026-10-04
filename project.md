@@ -27,6 +27,7 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 
 ## Signal flow
 
+- An input sample that is not a number (or is infinite) is treated as silence, on the dry path as well. Left alone, one such sample stayed in the delay lines and filters and made every output sample after it invalid until the plugin was reset, even at 0% feedback. Each tap also checks what its glitches produce and what it writes back to its delay line; if either is not a number it is dropped and the glitches or filters that produced it are cleared.
 - Input is summed to mono going into each tap. Supported layouts are mono in / stereo out and stereo in / stereo out.
 - Each tap has its own delay line and its own feedback loop.
 - Each tap's feedback path contains, in order: the active glitches (when glitch placement is "Feedback path"), a low cut filter, a high cut filter, and an always-on gentle soft-clipper with no user controls.

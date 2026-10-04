@@ -1,4 +1,5 @@
 #include "Tap.h"
+#include "Finite.h"
 #include "SoftClip.h"
 
 namespace astralay::dsp
@@ -127,7 +128,16 @@ void Tap::process (float input, float freeze, float& left, float& right) noexcep
     const auto delaySamples = (float) delayPosition;
 
     glitches.setLoop (delaySamples, loopGain);
-    const auto glitched = glitches.process (delayed);
+    const auto glitchOutput = glitches.process (delayed);
+
+    // Nothing that isn't a number may reach the output or go back into the delay line, where it
+    // would stay for good. The engine keeps such samples out of the input, so these guards only
+    // act if something in the tap itself goes wrong, and then they clear whatever was holding it.
+    const auto glitchFault = isNonFinite (glitchOutput);
+    const auto glitched = glitchFault ? delayed : glitchOutput;
+
+    if (glitchFault)
+        glitches.reset();
 
     // Output.
     const auto out = (glitchesHeard ? glitched : delayed) * gain.getNextValue() * fade;
@@ -141,8 +151,18 @@ void Tap::process (float input, float freeze, float& left, float& right) noexcep
 
     const auto written = (input * (1.0f - freeze) + returned) * fade;
 
-    line.push (written);
-    glitches.getProbe().sample (freeze, delaySamples, fb, delayed, glitched, written);
+    if (isNonFinite (written))
+    {
+        lowCut.reset();
+        highCut.reset();
+        line.push (0.0f);
+    }
+    else
+    {
+        line.push (written);
+    }
+
+    glitches.getProbe().sample (freeze, delaySamples, fb, delayed, glitchOutput, written);
 }
 
 void Tap::endBlock() noexcept

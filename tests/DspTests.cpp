@@ -552,6 +552,70 @@ public:
             }
         }
 
+        beginTest ("An input sample that isn't a number is treated as silence and leaves nothing behind");
+        {
+            const auto nan = std::numeric_limits<float>::quiet_NaN();
+            const auto infinity = std::numeric_limits<float>::infinity();
+
+            for (const auto bad : { nan, infinity, -infinity })
+            {
+                for (const auto feedback : { 0.0f, 0.5f })
+                {
+                    auto input = sineBurst (48000, 48000, 440.0f);
+
+                    Engine clean;
+                    setUp (clean, wetOnly(), singleTap (100.0f, feedback));
+                    const auto expected = run (clean, input).first;
+
+                    input[1000] = bad;
+
+                    Engine engine;
+                    setUp (engine, wetOnly(), singleTap (100.0f, feedback));
+                    const auto [left, right] = run (engine, input);
+
+                    auto notFinite = 0;
+                    auto difference = 0.0;
+
+                    for (size_t i = 0; i < left.size(); ++i)
+                    {
+                        notFinite += (isNonFinite (left[i]) ? 1 : 0) + (isNonFinite (right[i]) ? 1 : 0);
+
+                        if (i >= 24000)
+                            difference = juce::jmax (difference, (double) std::abs (left[i] - expected[i]));
+                    }
+
+                    // Without the guard every output sample from then on was not a number, even
+                    // with no feedback, since such a sample times zero is still not a number.
+                    const auto message = "Feedback " + juce::String (feedback) + ": " + juce::String (notFinite)
+                                             + " output samples not finite, later output off by " + juce::String (difference);
+
+                    expectEquals (notFinite, 0, message);
+                    expect (difference < 1.0e-3, message);
+                }
+            }
+
+            // A tap handed such a sample directly keeps it out of its delay line and its filters.
+            Tap tap;
+            tap.prepare (testSampleRate, 4800);
+            tap.setSettings (singleTap (100.0f, 0.5f), 0.0f, {});
+            tap.reset();
+
+            auto notFinite = 0;
+            auto last = 0.0f;
+
+            for (int i = 0; i < 4800; ++i)
+            {
+                auto left = 0.0f, right = 0.0f;
+                tap.process (i == 50 ? nan : (i == 60 ? infinity : 0.25f), 0.0f, left, right);
+
+                notFinite += (isNonFinite (left) ? 1 : 0) + (isNonFinite (right) ? 1 : 0);
+                last = left;
+            }
+
+            expectEquals (notFinite, 0);
+            expect (last > 0.1f, "The tap is still passing audio");
+        }
+
         beginTest ("A long tap glides to a new time smoothly");
         {
             // A 5 second tap moved by 10 ms over 2 seconds, and by 1 ms over 100 ms. Each sample's

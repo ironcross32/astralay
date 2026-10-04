@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "Finite.h"
 
 namespace astralay::dsp
 {
@@ -118,8 +119,10 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
 
         --samplesToChunk;
 
-        const auto dryLeft = inLeft[i];
-        const auto dryRight = inRight != nullptr ? inRight[i] : dryLeft;
+        // An input sample that isn't a number is taken as silence. Left alone it would stay in the
+        // delay lines and filters for good, and reach the output even through a gain of zero.
+        const auto dryLeft = isNonFinite (inLeft[i]) ? 0.0f : inLeft[i];
+        const auto dryRight = inRight == nullptr ? dryLeft : (isNonFinite (inRight[i]) ? 0.0f : inRight[i]);
         const auto mono = inRight != nullptr ? 0.5f * (dryLeft + dryRight) : dryLeft;
         const auto frozen = freeze.getNextValue();
 

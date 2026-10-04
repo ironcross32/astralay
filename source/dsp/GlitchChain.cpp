@@ -92,6 +92,7 @@ void GlitchChain::reset()
     formantTrackingLeft = 0;
     pitchOffset = pitchArriving = 0.0f;
     pitchMean = 0.0f;
+    grainMean = 0.0f;
     pitchHoming = false;
 }
 
@@ -232,9 +233,13 @@ void GlitchChain::start (GlitchType type)
             grainInterval = (float) sampleRate / density;
             grainCountdown = 0.0f;
 
-            // Hann grains average 0.5, so this keeps the level steady as they overlap.
-            const auto overlap = density * (float) grainSize / (float) sampleRate;
-            grainGain = 1.0f / juce::jmax (1.0f, overlap * 0.5f);
+            // How many grains sound at once, on average. Grains taken from different places are
+            // unrelated, so they add in power: a Hann grain's power averages 0.375. A constant
+            // offset is the same in every grain and adds in amplitude, where a Hann grain
+            // averages 0.5. granularize() sets the gain from these.
+            const auto overlap = juce::jmin (density * (float) grainSize / (float) sampleRate, (float) maxGrainVoices);
+            grainPowerSum = std::sqrt (overlap * 0.375f);
+            grainAmplitudeSum = overlap * 0.5f;
 
             for (auto& voice : voices)
                 voice.active = false;
@@ -415,6 +420,7 @@ float GlitchChain::process (float input) noexcept
     if (isActive (GlitchType::stutter))
         y = applyStage (GlitchType::stutter, y, stutter());
 
+    grainMean += pitchMeanSmoothing * (y - grainMean);
     grainInput.push (y);
     if (isActive (GlitchType::granularize))
         y = applyStage (GlitchType::granularize, y, granularize());
@@ -534,7 +540,7 @@ float GlitchChain::granularize() noexcept
         }
     }
 
-    auto wet = 0.0f;
+    auto wet = 0.0f, windows = 0.0f;
 
     for (auto& voice : voices)
     {
@@ -544,12 +550,24 @@ float GlitchChain::granularize() noexcept
         // Reading forward at normal speed from a point in the past keeps a constant distance behind.
         const auto window = 0.5f - 0.5f * std::cos (twoPi * (float) voice.position / (float) voice.size);
         wet += grainInput.back (voice.samplesAgo) * window;
+        windows += window;
 
         if (++voice.position >= voice.size)
             voice.active = false;
     }
 
-    return wet * grainGain;
+    // Overlapping grains are turned down to the level of the audio they are made from: as grains
+    // that add in power, which is right for unrelated grains heard once. In a feedback loop that
+    // is too much. The grains are copies of the loop's own audio at different delays, and at the
+    // frequencies where those copies line up they add in amplitude; with more coming back than
+    // went in, those frequencies grow on every trip until the loop howls. So the gain is held to
+    // what the loop can take, which for a loop that keeps everything is the gain for grains that
+    // add in amplitude.
+    const auto gain = 1.0f / juce::jmax (1.0f, grainPowerSum, loopGain * grainAmplitudeSum);
+
+    // The offset the audio rides on is the same in every grain, so it always adds in amplitude.
+    const auto offset = grainMean * windows;
+    return (wet - offset) * gain + offset / juce::jmax (1.0f, grainAmplitudeSum);
 }
 
 float GlitchChain::pitchShift() noexcept

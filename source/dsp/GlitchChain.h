@@ -111,7 +111,9 @@ private:
     // Granularize
     std::array<Voice, maxGrainVoices> voices;
     int grainSize = 0, grainSpread = 0;
-    float grainInterval = 1.0f, grainCountdown = 0.0f, grainGain = 1.0f;
+    float grainInterval = 1.0f, grainCountdown = 0.0f;
+    float grainPowerSum = 1.0f, grainAmplitudeSum = 1.0f;   // What overlapping grains add up to, unrelated and identical.
+    float grainMean = 0.0f;                                 // The offset the audio arriving rides on: its slow-moving mean.
 
     // Pitch
     float pitchRatio = 1.0f, pitchPhase = 0.0f, pitchWindow = 1.0f;

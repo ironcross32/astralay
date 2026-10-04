@@ -552,6 +552,87 @@ public:
             }
         }
 
+        beginTest ("Dense grains come out at the level of the audio they are made from");
+        {
+            // 200 ms grains at 40 and 100 a second: 8 and 20 sounding at once. Turned down as if
+            // they added in amplitude, these came out 7 and 11 dB quiet.
+            for (const auto density : { 40.0f, 100.0f })
+            {
+                GlitchChain chain;
+                chain.prepare (testSampleRate);
+
+                TapGlitchSettings settings;
+                settings.grainSize = { 9600.0f, 9600.0f };
+                settings.grainDensity = { density, density };
+
+                GlitchGlobalSettings global;
+                global.chunkSamples = 48000 * 8;
+                global.lengthChunks = { 1.0f, 1.0f };
+                chain.setSettings (settings, global);
+
+                juce::Random random (5);
+                std::vector<float> in (48000 * 8), out (in.size());
+
+                for (auto& x : in)
+                    x = random.nextFloat() - 0.5f;
+
+                for (size_t i = 0; i < in.size(); ++i)
+                {
+                    if (i == 48000)
+                        chain.startForTesting (GlitchType::granularize);
+
+                    out[i] = chain.process (in[i]);
+                }
+
+                const auto level = juce::Decibels::gainToDecibels (rms (out, 96000, 48000 * 5) / rms (in, 96000, 48000 * 5));
+                expect (std::abs (level) < 1.5f, juce::String (density) + " grains a second: " + juce::String (level, 1) + " dB");
+            }
+        }
+
+        beginTest ("Dense grains in a feedback loop don't run away");
+        {
+            // In a loop the grains are copies of the loop's own audio, and where they line up they
+            // add in amplitude. At the level that suits grains heard once, a frozen loop grew
+            // without limit.
+            TapGlitchSettings glitch;
+            glitch.probability[(size_t) GlitchType::granularize] = 1.0f;
+            glitch.grainSize = { 9600.0f, 9600.0f };
+            glitch.grainDensity = { 100.0f, 100.0f };
+
+            for (const auto delay : { 1920.0f, 12000.0f })
+            {
+                juce::Random random (11);
+                const auto change = runFrozenLoop (delay, 3, 30.0, glitch,
+                                                   [&random] (size_t) { return 0.2f + 0.2f * (random.nextFloat() - 0.5f); });
+
+                expect (change.level < 1.1f && change.peak < 6.0f, "Frozen loop of " + juce::String (delay) + " samples: " + change.describe());
+            }
+
+            // The same grains at 95% feedback, with noise coming in throughout.
+            auto global = wetOnly();
+            global.glitch.threshold = 1.0f;
+            global.glitch.chunkSamples = 6000;
+            global.reproducible = true;
+            global.seed = 3;
+
+            auto tap = singleTap (12000.0f, 0.95f);
+            tap.glitch = glitch;
+
+            Engine engine;
+            setUp (engine, global, tap);
+
+            juce::Random random (11);
+            std::vector<float> input (48000 * 30);
+
+            for (auto& x : input)
+                x = 0.05f * (random.nextFloat() - 0.5f);
+
+            const auto left = run (engine, input).first;
+            const auto early = rms (left, 48000 * 4, 48000), late = rms (left, 48000 * 29, 48000);
+
+            expect (late < 3.0f * early, "At 95% feedback the level went from " + juce::String (early) + " to " + juce::String (late));
+        }
+
         beginTest ("A glitch's read between samples keeps the top of the spectrum");
         {
             // A 15 kHz sine read half a sample off, where interpolation has most to do. Linear

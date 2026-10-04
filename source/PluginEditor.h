@@ -33,7 +33,8 @@ class AstralayEditor final : public juce::AudioProcessorEditor,
                              public astralay::ui::AnnouncementTarget,
                              private juce::FocusChangeListener,
                              private juce::ValueTree::Listener,
-                             private juce::ChangeListener
+                             private juce::ChangeListener,
+                             private juce::AsyncUpdater
 {
 public:
     explicit AstralayEditor (AstralayProcessor&);
@@ -179,6 +180,8 @@ private:
     void showPitchModeMenu (juce::Component& target);
 
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
+    void valueTreeRedirected (juce::ValueTree&) override;
+    void handleAsyncUpdate() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void jumpToGroup (int direction);
 

@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "params/Parameters.h"
+#include <thread>
 
 namespace
 {
@@ -147,6 +148,75 @@ public:
             for (auto* c : tabOrder (ed))
                 if (groupPath (*c).contains ("Global"))
                     expect (c->getParentComponent()->getLocalBounds().contains (c->getBounds()), titleOf (*c) + " is clipped");
+        }
+
+        beginTest ("An open editor follows host state replacement, including restores from another thread");
+        {
+            AstralayProcessor savedProcessor, restoredProcessor;
+            savedProcessor.setSelectedTap (5);
+            savedProcessor.getState().state.setProperty ("presetName", "Restored session", nullptr);
+            auto* feedback = savedProcessor.getState().getParameter (tapId (5, tap::feedback));
+            feedback->setValueNotifyingHost (feedback->convertTo0to1 (76.0f));
+
+            juce::MemoryBlock saved;
+            savedProcessor.getStateInformation (saved);
+            std::unique_ptr<juce::AudioProcessorEditor> openEditor (restoredProcessor.createEditor());
+            openEditor->addToDesktop (juce::ComponentPeer::windowIsTemporary);
+
+            const auto dispatch = [] { juce::MessageManager::getInstance()->runDispatchLoopUntil (20); };
+            const auto checkRestored = [&]
+            {
+                expect (findByTitle (*openEditor, "Preset: Restored session") != nullptr, "Preset name stayed stale");
+                expectEquals (restoredProcessor.getSelectedTap(), 5);
+                expect (findByTitle (*openEditor, "Tap 6 Enabled") != nullptr, "Tap controls stayed bound to the old tap");
+                auto* slider = dynamic_cast<astralay::ui::ParameterSlider*> (findByTitle (*openEditor, "Tap 6 Feedback"));
+                expect (slider != nullptr);
+                if (slider != nullptr)
+                {
+                    expect (slider->getParameter() == restoredProcessor.getState().getParameter (tapId (5, tap::feedback)));
+                    expectWithinAbsoluteError (slider->getValue(), 76.0, 0.01);
+                    expectEquals (groupPath (*slider).joinIntoString ("/"), juce::String ("Tap 6"));
+                    slider->setValue (31.0, juce::sendNotificationSync);
+                    expectWithinAbsoluteError (valueOf (restoredProcessor, tapId (5, tap::feedback)), 31.0f, 0.01f);
+                    expectWithinAbsoluteError (valueOf (restoredProcessor, tapId (0, tap::feedback)), 40.0f, 0.01f);
+                }
+            };
+
+            restoredProcessor.setStateInformation (saved.getData(), (int) saved.getSize());
+            dispatch();
+            checkRestored();
+
+            // Change the visible tap, then restore from a non-message host thread.
+            openEditor->keyPressed (juce::KeyPress ('1'));
+            std::thread restore ([&] { restoredProcessor.setStateInformation (saved.getData(), (int) saved.getSize()); });
+            restore.join();
+            dispatch();
+            checkRestored();
+
+            // More than one replacement before the message loop runs must display the newest state.
+            savedProcessor.setSelectedTap (9);
+            savedProcessor.getState().state.setProperty ("presetName", "Latest session", nullptr);
+            juce::MemoryBlock latest;
+            savedProcessor.getStateInformation (latest);
+            restoredProcessor.setStateInformation (saved.getData(), (int) saved.getSize());
+            restoredProcessor.setStateInformation (latest.getData(), (int) latest.getSize());
+            dispatch();
+            expect (findByTitle (*openEditor, "Preset: Latest session") != nullptr);
+            expect (findByTitle (*openEditor, "Tap 10 Feedback") != nullptr);
+            expectEquals (restoredProcessor.getSelectedTap(), 9);
+
+            // A new preset name still refreshes when its selected tap is unchanged.
+            savedProcessor.getState().state.setProperty ("presetName", "Same tap session", nullptr);
+            savedProcessor.getStateInformation (latest);
+            restoredProcessor.setStateInformation (latest.getData(), (int) latest.getSize());
+            dispatch();
+            expect (findByTitle (*openEditor, "Preset: Same tap session") != nullptr);
+            expect (findByTitle (*openEditor, "Tap 10 Feedback") != nullptr);
+
+            // Closing the editor before a queued refresh is delivered must be safe.
+            restoredProcessor.setStateInformation (saved.getData(), (int) saved.getSize());
+            openEditor.reset();
+            dispatch();
         }
 
         beginTest ("Every control has a help tag");

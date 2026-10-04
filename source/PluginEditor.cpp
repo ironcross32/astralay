@@ -198,6 +198,7 @@ AstralayEditor::~AstralayEditor()
 
     processor.getMacroChanges().removeChangeListener (this);
     state.state.removeListener (this);
+    cancelPendingUpdate();
     juce::Desktop::getInstance().removeFocusChangeListener (this);
     setLookAndFeel (nullptr);
 }
@@ -1141,7 +1142,30 @@ void AstralayEditor::refreshPresetName()
 void AstralayEditor::valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& property)
 {
     if (property.toString().startsWith ("preset"))
-        refreshPresetName();
+    {
+        if (juce::MessageManager::existsAndIsCurrentThread())
+            refreshPresetName();
+        else
+            triggerAsyncUpdate();
+    }
+}
+
+void AstralayEditor::valueTreeRedirected (juce::ValueTree& tree)
+{
+    if (tree == state.state)
+        triggerAsyncUpdate();
+}
+
+void AstralayEditor::handleAsyncUpdate()
+{
+    // A host can replace state off the message thread. Defer the UI work until after the
+    // notification, letting parameter attachments reconnect as well, and read the latest state
+    // so a series of restores cannot leave an older preset or tap on screen.
+    const auto restoredTap = processor.getSelectedTap();
+    if (restoredTap != selectedTap)
+        selectTap (restoredTap);
+
+    refreshPresetName();
 }
 
 void AstralayEditor::jumpToGroup (int direction)

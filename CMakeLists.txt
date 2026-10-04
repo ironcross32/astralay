@@ -168,6 +168,8 @@ if(ASTRALAY_BUILD_TESTS)
 
     target_compile_definitions(AstralayTests
         PRIVATE
+            # Tests dispatch queued editor updates; plugin builds retain JUCE's default.
+            JUCE_MODAL_LOOPS_PERMITTED=1
             JUCE_WEB_BROWSER=0
             JUCE_USE_CURL=0
             JucePlugin_Name="Astralay"

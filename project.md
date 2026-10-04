@@ -174,6 +174,7 @@ There are 8 macros. Each has a value and moves any number of other parameters by
 - Load opens a menu containing a "Factory presets" submenu and a "From file…" item, which opens a native OS open dialog in the user preset folder.
 - A new instance's preset name is "Init". When the current preset has been changed, the name label reads "<name>, modified" (a word rather than an asterisk, which screen readers often skip).
 - The host session state stores all parameters plus the currently selected tap, the output clip setting and the macro settings. A session saved before there were macros restores them at their defaults.
+- Restoring host state with the editor open refreshes the preset label and rebinds the selected tap's controls. State-replacement notifications queue a refresh on the message thread, including when the host restores from another thread. Consecutive replacements display the latest state, and closing the editor cancels its pending refresh.
 
 ### Undo
 

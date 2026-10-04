@@ -552,6 +552,65 @@ public:
             }
         }
 
+        beginTest ("A glitch's read between samples keeps the top of the spectrum");
+        {
+            // A 15 kHz sine read half a sample off, where interpolation has most to do. Linear
+            // interpolation takes 5 dB off it there.
+            HistoryBuffer history;
+            history.prepare (4800);
+
+            const auto sine = [] (double position) { return std::sin (juce::MathConstants<double>::twoPi * 15000.0 * position / testSampleRate); };
+
+            for (int i = 0; i < 2000; ++i)
+                history.push ((float) sine ((double) i));
+
+            auto worst = 0.0, worstLinear = 0.0;
+
+            for (auto samplesAgo = 20.5f; samplesAgo < 400.0f; samplesAgo += 1.0f)
+            {
+                const auto expected = sine (1999.0 - (double) samplesAgo);
+                worst = juce::jmax (worst, std::abs ((double) history.readAudio (samplesAgo) - expected));
+                worstLinear = juce::jmax (worstLinear, std::abs ((double) history.read (samplesAgo) - expected));
+            }
+
+            expect (worst < 0.01, "Off by " + juce::String (worst) + "; linear is off by " + juce::String (worstLinear));
+
+            // A whole number of samples back is the stored sample, and so is a read too close to
+            // the newest sample for the kernel to fit.
+            expectEquals (history.readAudio (100.0f), history.back (100));
+            expectEquals (history.readAudio (3.0f), history.back (3));
+        }
+
+        beginTest ("Pitch sweeps and frequency modulation don't dull a frozen loop");
+        {
+            // White noise in loops of 40 ms and 250 ms, swept for 30 seconds. Sweeps wear a loop
+            // down whatever is done, but read with linear interpolation these lost 54 and 20 dB of
+            // level and 80 and 65 dB of treble.
+            for (const auto delay : { 1920.0f, 12000.0f })
+            {
+                TapGlitchSettings glitch;
+                glitch.probability[(size_t) GlitchType::pitch] = 1.0f;
+
+                juce::Random random (11);
+                const auto change = runFrozenLoop (delay, 3, 30.0, glitch, [&random] (size_t) { return 0.5f * (random.nextFloat() - 0.5f); });
+                const auto message = "Pitch, loop of " + juce::String (delay) + " samples: " + change.describe();
+
+                expect (change.level > (delay < 5000.0f ? 0.02f : 0.2f) && change.level < 1.1f, message);
+                expect (change.treble > (delay < 5000.0f ? 0.002f : 0.01f), message);
+            }
+
+            // A tone in a 250 ms loop under frequency modulation, which adds treble of its own.
+            // With linear interpolation the loop ended up duller than it began all the same.
+            TapGlitchSettings glitch;
+            glitch.probability[(size_t) GlitchType::frequencyModulation] = 1.0f;
+
+            const auto change = runFrozenLoop (12000.0f, 7, 30.0, glitch, tone);
+            const auto message = "Frequency modulation: " + change.describe();
+
+            expect (change.level > 0.4f && change.level < 1.1f, message);
+            expect (change.treble > 0.7f, message);
+        }
+
         beginTest ("With host sync on, a glitch that always fires runs without gaps at any tempo");
         {
             // Chunks of a sixteenth note are rarely a whole number of samples. At the tempos where

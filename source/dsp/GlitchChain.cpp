@@ -47,7 +47,7 @@ void GlitchChain::prepare (double newSampleRate, double maxLoopSeconds)
     reverseInput.prepare (2 * reverseCap + 4);
     stutterInput.prepare (samples (sliceCapSeconds));
     grainInput.prepare (samples (grainHistorySeconds));
-    pitchInput.prepare (samples (2.0 * pitchWindowSeconds) + 4);
+    pitchInput.prepare (samples (2.0 * pitchWindowSeconds) + 4 + sinc::kernelSize);
     pitchTrack.prepare (samples (2.0 * pitchWindowSeconds) + 4);
     loopTrack.assign ((size_t) (samples (maxLoopSeconds) / loopTrackStep + 4), 0.0f);
     formantLoopTrack.assign (loopTrack.size(), 0.0f);
@@ -312,7 +312,7 @@ void GlitchChain::start (GlitchType type)
             const auto index = settings.fmIndex.pick (random);
             const auto depthSeconds = index / (twoPi * fundamental);
             fmDepth = (float) juce::jmin ((double) depthSeconds, fmMaxDepthSeconds) * (float) sampleRate;
-            fmCentre = fmDepth + 2.0f;
+            fmCentre = fmDepth + (float) HistoryBuffer::audioReadMargin + 1.0f;
             fmPhase = 0.0f;
             picks = { picked (ratio, settings.fmRatio), picked (index, settings.fmIndex) };
             break;
@@ -586,7 +586,7 @@ float GlitchChain::pitchShift() noexcept
                                    : (pitchDirection > 0 ? pitchUpRatio : pitchDownRatio);
     pitchWetOffset = reading + (float) pitchDirection * step;
 
-    return levelMix (pitchInput.read (delayA), gain, pitchInput.read (delayB), pitchHeads);
+    return levelMix (pitchInput.readAudio (delayA), gain, pitchInput.readAudio (delayB), pitchHeads);
 }
 
 float GlitchChain::ringModulate (float input) noexcept
@@ -600,7 +600,7 @@ float GlitchChain::frequencyModulate() noexcept
     // Modulating the read position is phase modulation: sidebands at the fundamental plus and
     // minus multiples of the modulator frequency.
     fmPhase = wrap (fmPhase + fmFrequency / (float) sampleRate);
-    return fmInput.read (fmCentre + fmDepth * std::sin (twoPi * fmPhase));
+    return fmInput.readAudio (fmCentre + fmDepth * std::sin (twoPi * fmPhase));
 }
 
 float GlitchChain::bitCrush (float input) noexcept

@@ -1,8 +1,8 @@
 #pragma once
 
 #include <juce_core/juce_core.h>
-#include <array>
 #include <vector>
+#include "SincKernel.h"
 
 namespace astralay::dsp
 {
@@ -26,6 +26,8 @@ public:
 
     void prepare (int maxDelaySamples)
     {
+        sinc::kernels();   // Built here, not on the audio thread.
+
         const auto size = (size_t) juce::nextPowerOfTwo (maxDelaySamples + kernelSize + 4);
         buffer.assign (size, 0.0f);
         mask = (int) size - 1;
@@ -62,7 +64,7 @@ public:
         if (whole < kernelSize / 2)
             return hermite (i, t);
 
-        const auto& kernel = kernels()[(size_t) juce::roundToInt (t * (float) numPhases)];
+        const auto& kernel = sinc::kernelFor (t);
         const auto first = i - (kernelSize / 2 - 1);
         auto sum = 0.0f;
 
@@ -79,64 +81,7 @@ public:
     }
 
 private:
-    static constexpr int kernelSize = 16;
-    static constexpr int numPhases = 1024;
-
-    using Kernel = std::array<float, kernelSize>;
-
-    /** The interpolation weights for each of numPhases + 1 positions between two samples. */
-    static const std::vector<Kernel>& kernels()
-    {
-        static const auto table = []
-        {
-            std::vector<Kernel> result ((size_t) numPhases + 1);
-
-            const auto half = kernelSize / 2;
-            const auto pi = juce::MathConstants<double>::pi;
-            const auto beta = 7.0;
-
-            // Zeroth-order modified Bessel function, for the Kaiser window.
-            const auto bessel = [] (double x)
-            {
-                auto sum = 1.0, term = 1.0;
-
-                for (int n = 1; n < 30; ++n)
-                {
-                    term *= (x / (2.0 * n)) * (x / (2.0 * n));
-                    sum += term;
-                }
-
-                return sum;
-            };
-
-            for (int phase = 0; phase <= numPhases; ++phase)
-            {
-                const auto t = (double) phase / numPhases;
-                std::array<double, kernelSize> weights {};
-                auto total = 0.0;
-
-                for (int k = 0; k < kernelSize; ++k)
-                {
-                    // Distance from the point wanted to tap k, which sits at k - (half - 1).
-                    const auto x = t - (double) (k - (half - 1));
-                    const auto sinc = std::abs (x) < 1.0e-9 ? 1.0 : std::sin (pi * x) / (pi * x);
-                    const auto position = juce::jlimit (-1.0, 1.0, x / half);
-                    const auto window = bessel (beta * std::sqrt (1.0 - position * position)) / bessel (beta);
-
-                    weights[(size_t) k] = sinc * window;
-                    total += weights[(size_t) k];
-                }
-
-                // Unity gain for a steady signal at every position.
-                for (int k = 0; k < kernelSize; ++k)
-                    result[(size_t) phase][(size_t) k] = (float) (weights[(size_t) k] / total);
-            }
-
-            return result;
-        }();
-
-        return table;
-    }
+    static constexpr int kernelSize = sinc::kernelSize;
 
     float hermite (int i, float t) const noexcept
     {

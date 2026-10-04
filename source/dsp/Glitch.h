@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 #include <array>
 #include <vector>
+#include "SincKernel.h"
 
 namespace astralay::dsp
 {
@@ -79,6 +80,8 @@ class HistoryBuffer
 public:
     void prepare (int capacity)
     {
+        sinc::kernels();   // Built here, not on the audio thread.
+
         const auto size = (size_t) juce::nextPowerOfTwo (juce::jmax (capacity + 4, 8));
         buffer.assign (size, 0.0f);
         mask = (int) size - 1;
@@ -101,7 +104,9 @@ public:
         return buffer[(size_t) ((writeIndex - samplesAgo) & mask)];
     }
 
-    /** Linearly interpolated read, samplesAgo >= 0. */
+    /** Linearly interpolated read, samplesAgo >= 0. Cheap, and dulls the top a little each time:
+        for values that travel beside the audio, not for audio that goes round a loop.
+    */
     float read (float samplesAgo) const noexcept
     {
         const auto whole = (int) samplesAgo;
@@ -109,6 +114,39 @@ public:
         const auto a = back (whole);
         const auto b = back (whole + 1);
         return a + (b - a) * fraction;
+    }
+
+    /** How far back readAudio() has to be reading for its full quality. */
+    static constexpr int audioReadMargin = sinc::kernelSize / 2 - 1;
+
+    /** Reads audio between samples with the delay line's 16-point windowed sinc, which keeps the
+        top of the spectrum nearly intact. A feedback loop passes through a glitch's read many
+        times a second, and linear interpolation lost treble on every pass.
+
+        The kernel reaches half its length either side. Closer to the newest sample than
+        audioReadMargin, where that would be audio not yet written, this falls back to read().
+    */
+    float readAudio (float samplesAgo) const noexcept
+    {
+        const auto whole = (int) samplesAgo;
+        const auto fraction = samplesAgo - (float) whole;
+
+        if (whole < audioReadMargin)
+            return read (samplesAgo);
+
+        if (fraction <= 0.0f)
+            return back (whole);
+
+        // The point wanted lies between the samples whole + 1 and whole ago, 1 - fraction of the
+        // way from the earlier to the later.
+        const auto& kernel = sinc::kernelFor (1.0f - fraction);
+        const auto first = whole + sinc::kernelSize / 2;
+        auto sum = 0.0f;
+
+        for (int k = 0; k < sinc::kernelSize; ++k)
+            sum += back (first - k) * kernel[(size_t) k];
+
+        return sum;
     }
 
 private:

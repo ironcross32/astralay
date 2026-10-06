@@ -45,6 +45,7 @@ class Engine
 {
 public:
     static constexpr int numTaps = 16;
+    static_assert (2 * numTaps == FormantShifter::scheduleSlots);
     static constexpr double maxSmearSeconds = 0.5;
 
     void prepare (double sampleRate, int maxBlockSize, double maxDelaySeconds);
@@ -87,6 +88,7 @@ private:
     double sampleRate = 44100.0;
 
     int samplesToChunk = 0;
+    int formantClock = 0;
     bool wasPlaying = false;
     std::optional<juce::int64> expectedSamplePosition;
 };

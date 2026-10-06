@@ -102,8 +102,8 @@ public:
 
                 const auto output = shift (method, input, 0.0f, startAt);
 
-                // Including the very first samples: the shifter warms up from history.
-                for (int i = startAt; i < startAt + 20000; ++i)
+                // The scheduled warm-up returns silence; once ready, alignment is unchanged.
+                for (int i = startAt + probe.getMaxWarmupSamples(); i < startAt + 20000; ++i)
                     expectWithinAbsoluteError (output[(size_t) i], input[(size_t) (i - latency)], 1.0e-3f);
             }
 

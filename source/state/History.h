@@ -72,6 +72,9 @@ public:
 
     void clear();
 
+    /** A separate non-sound action (for MIDI mappings), without preset modification tracking. */
+    void performAction (juce::UndoableAction*, const juce::String& description);
+
     /** The maximum gap between edits of one parameter that still merge into a single step. */
     static constexpr juce::uint32 mergeWindowMs = 600;
 

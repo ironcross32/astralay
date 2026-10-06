@@ -196,6 +196,14 @@ void History::clear()
     snapshotStepOpen = false;
 }
 
+void History::performAction (juce::UndoableAction* action, const juce::String& description)
+{
+    undoManager.beginNewTransaction (textPrefix + description);
+    undoManager.perform (action);
+    lastParameter = -1;
+    snapshotStepOpen = false;
+}
+
 void History::setValue (int parameterIndex, float normalisedValue)
 {
     if (auto* parameter = processor.getParameters()[parameterIndex])

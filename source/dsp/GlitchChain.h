@@ -24,7 +24,7 @@ class GlitchChain
 {
 public:
     /** maxLoopSeconds is the longest feedback loop setLoop() will describe. */
-    void prepare (double sampleRate, double maxLoopSeconds = 10.0);
+    void prepare (double sampleRate, double maxLoopSeconds = 10.0, int tapIndex = 0);
     void reset();
     void reseed (juce::int64 seed);
 
@@ -46,7 +46,8 @@ public:
     void onChunkBoundary();
 
     /** Processes one sample. Always call it, even with no glitches running, so histories fill. */
-    float process (float input, float restoredAmount = 0.0f, float restoredPitch = 0.0f, float restoredFormant = 0.0f) noexcept;
+    float process (float input, float restoredAmount = 0.0f, float restoredPitch = 0.0f, float restoredFormant = 0.0f, int formantClock = -1) noexcept;
+    juce::uint64 getFormantFrameCount() const noexcept { return lpcShifter.getFrameCount() + cepstralShifter.getFrameCount(); }
 
     struct LoopState { float pitch = 0.0f, formant = 0.0f; };
 

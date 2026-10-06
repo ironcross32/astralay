@@ -12,7 +12,7 @@ namespace
     constexpr int gainSmoothing = 4;        // Bins either side that a bin's gain is averaged over.
 }
 
-void FormantShifter::prepare (double sampleRate, Method newMethod)
+void FormantShifter::prepare (double sampleRate, Method newMethod, int scheduleSlot)
 {
     method = newMethod;
 
@@ -23,6 +23,9 @@ void FormantShifter::prepare (double sampleRate, Method newMethod)
     fft = std::make_unique<RealFft> (order);
     frameSize = fft->getSize();
     hopSize = frameSize / overlap;
+    primeSpacing = hopSize / (scheduleSlots * overlap);
+    schedulePhase = juce::jlimit (0, scheduleSlots - 1, scheduleSlot) * hopSize / scheduleSlots;
+    startupFadeSamples = juce::jmax (1, (int) (sampleRate * 0.005));
     bins = frameSize / 2 + 1;
 
     // Formant resolution: LPC order and cepstral lifter scale with the sample rate.
@@ -61,6 +64,11 @@ void FormantShifter::reset()
     readPosition = 0;
     samplesSinceHop = 0;
     primed = false;
+    primeFramesLeft = overlap;
+    frameClock = hopSize - 1;
+    frameCount = 0;
+    startupSamples = 0;
+    startupGain = 0.0f;
 }
 
 void FormantShifter::start (float semitones, float loopSamples)
@@ -83,19 +91,28 @@ void FormantShifter::start (float semitones, float loopSamples)
     readPosition = 0;
     samplesSinceHop = 0;
     primed = false;
+    primeFramesLeft = overlap;
+    startupSamples = 0;
+    startupGain = 0.0f;
 }
 
 float FormantShifter::next() noexcept
 {
     if (! primed)
     {
-        // Analyse the frames that would already overlap this moment, so output starts at full level.
-        for (int k = overlap - 1; k > 0; --k)
-            addFrame (k * hopSize, -k * hopSize);
-
-        addFrame (0, 0);
-        primed = true;
-        samplesSinceHop = 0;
+        // Each shifter owns four small slots within the shared hop. Build the old overlapping
+        // frames before their common playback origin; the newest frame ends at that origin.
+        // Input history moves while pending output stays still, so account for the time remaining.
+        const auto phase = schedulePhase + (overlap - primeFramesLeft) * primeSpacing;
+        if (frameClock == phase)
+        {
+            const auto k = --primeFramesLeft;
+            addFrame (k * (hopSize - primeSpacing), -k * hopSize);
+            primed = primeFramesLeft == 0;
+            samplesSinceHop = 0;
+        }
+        if (! primed)
+            return 0.0f;
     }
     else if (++samplesSinceHop >= hopSize)
     {
@@ -104,6 +121,8 @@ float FormantShifter::next() noexcept
     }
 
     const auto sample = validOutputSamples > 0 ? output[(size_t) readPosition] : 0.0f;
+    startupGain = (float) startupSamples / (float) startupFadeSamples;
+    startupSamples = juce::jmin (startupSamples + 1, startupFadeSamples);
     validOutputSamples = juce::jmax (0, validOutputSamples - 1);
     readPosition = (readPosition + 1) & outputMask;
     return sample;
@@ -111,6 +130,7 @@ float FormantShifter::next() noexcept
 
 void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
 {
+    ++frameCount;
     // Window the frame that ends endsSamplesAgo samples back, or its match earlier in a short loop.
     for (int i = 0; i < frameSize; ++i)
         spectrum[(size_t) i] = history.back (lookBack + endsSamplesAgo + frameSize - 1 - i) * window[(size_t) i];

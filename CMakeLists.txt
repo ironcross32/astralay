@@ -41,13 +41,13 @@ juce_add_plugin(Astralay
     FORMATS VST3 AU Standalone
     PRODUCT_NAME "Astralay"
     IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
-    NEEDS_MIDI_OUTPUT FALSE
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT TRUE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD FALSE
     VST3_CATEGORIES Fx Delay
-    AU_MAIN_TYPE kAudioUnitType_Effect
+    AU_MAIN_TYPE kAudioUnitType_MusicEffect
     NEEDS_WEB_BROWSER FALSE
     NEEDS_CURL FALSE)
 
@@ -80,8 +80,10 @@ target_sources(Astralay
         ${ASTRALAY_CORE_SOURCES}
         source/PluginProcessor.cpp
         source/PluginEditor.cpp
+        source/MidiEditor.cpp
         source/state/DiagnosticLog.cpp
         source/state/History.cpp
+        source/state/MidiMappings.cpp
         source/state/Macros.cpp
         source/state/Presets.cpp
         source/ui/Announcer.cpp
@@ -144,15 +146,19 @@ if(ASTRALAY_BUILD_TESTS)
             tests/GlitchTests.cpp
             tests/ResetTests.cpp
             tests/FormantTests.cpp
+            tests/FormantSchedulingTests.cpp
             tests/SmearTests.cpp
             tests/StateTests.cpp
             tests/MacroTests.cpp
+            tests/MidiTests.cpp
             tests/Benchmark.cpp
             tests/DiagnosticsTests.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp
+            source/MidiEditor.cpp
             source/state/DiagnosticLog.cpp
             source/state/History.cpp
+            source/state/MidiMappings.cpp
             source/state/Macros.cpp
             source/state/Presets.cpp
             source/ui/Announcer.cpp

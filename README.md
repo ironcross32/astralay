@@ -16,9 +16,11 @@ Astralay is a multi-tap delay and glitch generator, built to be fully usable wit
     - frequency modulation
     - bit crusher
 - A shared glitch grid, which can follow the host's tempo, with a global threshold, glitch lengths, and a limit on how many glitches run at once.
+- Formant glitches briefly keep the original signal while preparing, then fade in over 5 ms. Preparation takes up to about 6 ms at common sample rates, spreading processing work to reduce CPU spikes. Very short formant glitches can sound weaker.
 - Reproducible randomness: playback starts restart the glitch sequence from your seed. Seeks and loop wraps also restart it when the host supplies sample positions. A host that skips stopped callbacks must report a position jump or prepare the plugin again for a restart to be detected.
 - Host sync, tape-style glide when times change, freeze, smear (diffusion), dry/wet mix, output gain and an output clip.
 - Eight macros, each moving any number of controls at once from a single value you can automate.
+- MIDI CC and pitch-bend learn, with reusable mappings and project-state recall.
 - Presets, factory presets, and undo and redo.
 
 ## Usage
@@ -48,6 +50,7 @@ Controls are arranged in five groups: Main, Tap *number*, Macros, Global, and Pe
 | Load a preset | Ctrl+O | Cmd+O |
 | Toggle host sync | Ctrl+Y | Cmd+Y |
 | Toggle freeze | Alt+F | Cmd+F |
+| Learn focused control, or cancel MIDI learn | Alt+L | Cmd+L |
 | Arm or disarm a macro | Alt+M, then 1 to 8 | Cmd+M, then 1 to 8 |
 | Disarm the armed macro | Alt+M, then 0 | Cmd+M, then 0 |
 | Switch to tap 1 to 10 | 1 to 9, then 0 | 1 to 9, then 0 |
@@ -127,6 +130,33 @@ The arrows only move taps that are on, and move them by one note value while hos
 ## Presets
 
 User presets are saved in `Documents/Astralay/Presets` on both Windows and macOS. Access factory presets by pressing "Load", then expanding the "Factory presets" entry.
+
+## MIDI
+
+Focus a sound control and press Alt+L on Windows or Cmd+L on macOS, then move a MIDI controller. Alternatively, activate **MIDI learn** in Main, click a sound control or press Enter on it, then move the controller. The selection click or Enter is consumed. A control's context menu also offers MIDI learn and, when bound, Remove MIDI mapping. Escape, the shortcut, or the learn button cancels learning. Learning disarms an armed macro and has no timeout while the editor stays open.
+
+Each binding remembers the exact channel and CC number, or channel and pitch bend. All CC numbers 0–127 are independent absolute values; relative encoders, CC pairs, RPN and NRPN aren't decoded. One source can drive several controls, but each control has one source. The event that completes learning changes no sound values. Later events move immediately through the control's full slider range, including its curve and stepping. Pitch bend's centre is the exact midpoint. Switches use the lower half for Off and the upper half for On. Existing DSP smoothing still applies; MIDI adds none.
+
+Tap bindings stay on the captured tap, and macro bindings stay on their slot. Time, stutter slice limits and buffer size follow host sync between milliseconds and note values. Pitch Mode, clipping, navigation, macro arms, modulation amounts and the performance pad cannot be learned. MIDI writes the stored sound value, and existing macro modulation applies afterward. Learning a macro value lets its existing routes and amounts shape travel for parameters supported by macros.
+
+**Main menu → MIDI** holds Save, Save As, default and clear operations, followed by valid mapping files sorted by name. Files live in `Documents/Astralay/MIDI Mappings`. Names are typed into an accessible field and must be portable between Windows and macOS. Saving uses `.json` and confirms replacement of another file or an externally changed file. Loading a mapping with unsaved edits offers Save, Discard or Cancel. Clear mapping asks once and discards the current bindings; it leaves files and the default unchanged.
+
+Mapping edits are undoable independently of sound edits. Incoming MIDI movement does not enter Astralay's undo history. Projects embed their complete mapping, file association and unsaved status; reopening or duplicating an instance doesn't depend on the mapping file. Loading a sound preset leaves bindings alone. Mapping files contain no sound values or macro configuration. Empty mappings cannot be saved as files.
+
+Set current mapping as default saves a nonempty mapping first when necessary, then references its file for new instances. Making an empty mapping the default, or clearing the default, makes new instances start empty. Existing instances keep their mappings. Restored projects, including projects predating MIDI support, take precedence over defaults. A missing or invalid default starts empty and exposes a status in the MIDI menu.
+
+### Audio and MIDI routing
+
+Astralay remains an audio effect with stereo output and stereo or mono input. Hosted builds receive MIDI from the DAW; the standalone's audio/MIDI settings select MIDI input devices. Astralay leaves incoming MIDI messages and their sample offsets unchanged in its processing buffer, including the learn event. Actual MIDI input/output routing and automation recording depend on the host and format; VST3 represents controller input through its MIDI-controller parameter interface, and hosts may filter or consume messages before delivery. AU is configured as a MIDI-capable music effect. Astralay generates no MIDI.
+
+In Reaper, use either of these arrangements:
+
+1. Put Astralay on a track receiving MIDI, enable the track's MIDI input/monitoring, and also feed audio to that track's first channel pair (for example from another track).
+2. Put Astralay on an audio track and send MIDI from another track, enabling MIDI in the send while disabling that send's audio if it isn't needed.
+
+Keep the effect's audio pins on the first stereo pair; mono input is also supported. MIDI output must be routed onward by the host if needed. Enable the host's appropriate automation recording mode to record parameter notifications. MIDI and host automation write the same stored values; the last applied update wins.
+
+These routing instructions require manual verification. Automated Windows processor/editor tests and build results are recorded in [MIDI verification](MIDI_verification.md); no Reaper, other-host, screen-reader or macOS/AU verification is implied by those tests.
 
 ## Building
 

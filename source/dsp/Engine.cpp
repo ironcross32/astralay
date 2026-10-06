@@ -18,8 +18,8 @@ void Engine::prepare (double newSampleRate, int, double maxDelaySeconds)
 
     const auto maxDelaySamples = (int) std::ceil (maxDelaySeconds * sampleRate);
 
-    for (auto& tap : taps)
-        tap.prepare (sampleRate, maxDelaySamples);
+    for (size_t t = 0; t < taps.size(); ++t)
+        taps[t].prepare (sampleRate, maxDelaySamples, (int) t);
 
     leftDcBlocker.prepare (sampleRate);
     rightDcBlocker.prepare (sampleRate);
@@ -50,6 +50,7 @@ void Engine::restartRandomness (juce::int64 baseSeed)
         taps[t].restartGlitches (seedForTap (baseSeed, t));
 
     samplesToChunk = 0;
+    formantClock = 0;
 }
 
 void Engine::setTransport (const TransportInfo& transport)
@@ -77,6 +78,7 @@ void Engine::setTransport (const TransportInfo& transport)
 void Engine::reset()
 {
     wasPlaying = false;
+    formantClock = 0;
     expectedSamplePosition.reset();
 
     for (auto& tap : taps)
@@ -141,7 +143,11 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
 
         for (auto& tap : taps)
             if (! tap.isIdle())
-                tap.process (mono, frozen, wetLeft, wetRight, global.freeze && global.freezeSustain);
+                tap.process (mono, frozen, wetLeft, wetRight, global.freeze && global.freezeSustain, formantClock);
+
+        // The largest supported formant hop is 2048 samples. Keep every tap on the same clock,
+        // including taps enabled later; disabled taps do no processing to maintain this alignment.
+        formantClock = (formantClock + 1) & (FormantShifter::clockPeriod - 1);
 
         wetLeft = leftDcBlocker.process (wetLeft);
         wetRight = rightDcBlocker.process (wetRight);

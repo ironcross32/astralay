@@ -6,6 +6,7 @@
 #include "params/Parameters.h"
 #include "state/DiagnosticLog.h"
 #include "state/History.h"
+#include "state/MidiMappings.h"
 
 class AstralayProcessor final : public juce::AudioProcessor
 {
@@ -26,8 +27,8 @@ public:
 
     const juce::String getName() const override { return JucePlugin_Name; }
 
-    bool acceptsMidi() const override { return false; }
-    bool producesMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
+    bool producesMidi() const override { return true; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return astralay::params::maxDelaySeconds; }
 
@@ -53,6 +54,7 @@ public:
     void setOutputClip (astralay::params::OutputClip clip) noexcept { outputClip.store (clip); }
 
     astralay::state::History& getHistory() noexcept { return history; }
+    astralay::state::MidiMappings& getMidiMappings() noexcept { return midiMappings; }
 
     /** The current preset's name, and whether its settings have changed since it was loaded or
         saved. Both are saved with the session.
@@ -230,7 +232,7 @@ private:
 
     HostInfo readHost() const;
     void updateModulatedValues();
-    void updateEngineSettings();
+    void updateEngineSettings (int sampleOffset = 0);
     void setPresetInfo (const juce::String& name, bool modified);
     juce::String applyPreset (const astralay::state::History::Snapshot& preset);
 
@@ -243,6 +245,8 @@ private:
 
     juce::AudioProcessorValueTreeState state;
     astralay::state::History history { *this };
+    astralay::state::MidiMappings midiMappings { state, history };
+    std::atomic<bool> midiModified { false };
     std::array<TapParameters, astralay::params::numTaps> tapParameters;
     GlobalParameters globalParameters;
 

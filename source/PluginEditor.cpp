@@ -71,22 +71,6 @@ namespace
         return specs;
     }
 
-    /** Shows a menu with its first item already highlighted.
-
-        JUCE gives the first item accessibility focus when a menu opens but leaves nothing
-        highlighted, so the first arrow press only highlights the item that already has focus
-        and a screen reader says nothing. Highlighting it straight away, as JUCE does for its
-        own sub-menus, keeps the two in step.
-    */
-    void showMenu (juce::PopupMenu& menu, juce::Component& target, std::function<void (int)> callback)
-    {
-        auto* previousModal = juce::Component::getCurrentlyModalComponent();
-
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target), std::move (callback));
-
-        if (auto* window = juce::Component::getCurrentlyModalComponent(); window != nullptr && window != previousModal)
-            window->keyPressed (juce::KeyPress (juce::KeyPress::downKey));
-    }
 }
 
 //==============================================================================
@@ -150,6 +134,7 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
     buildMacrosGroup();
     buildGlobalGroup();
     buildPerformanceGroup();
+    setupMidiControls();
 
     focusOutline = std::make_unique<FocusOutline> (content);
     content.addAndMakeVisible (*focusOutline);
@@ -191,6 +176,12 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
 
 AstralayEditor::~AstralayEditor()
 {
+    stopTimer();
+    processor.getMidiMappings().cancelLearn();
+    processor.getMidiMappings().setAnnouncer ({});
+    if (midiKeyTarget != nullptr) midiKeyTarget->removeKeyListener (this);
+    for (auto& window : midiMenuKeyTargets)
+        if (window != nullptr) window->removeKeyListener (this);
     // Ends a held freeze while there is still an editor to end it.
     performancePad.releaseHeldKeys();
     keyLayer.close();
@@ -243,6 +234,10 @@ void AstralayEditor::addToggle (ui::AccessibleGroup& group, std::vector<LayoutIt
 
 void AstralayEditor::buildMainGroup()
 {
+    ui::describe (mainMenuButton, "Main menu", "MIDI mapping options.");
+    ui::describe (midiLearnButton, "MIDI learn", "Select a sound control, then move a MIDI controller. Activate again to cancel.");
+    mainMenuButton.onClick = [this] { showMainMenu(); };
+    midiLearnButton.onClick = [this] { toggleMidiLearn(); };
     ui::describe (undoButton, "Undo", ui::helpFor (ui::helpKeys::undo));
     ui::describe (redoButton, "Redo", ui::helpFor (ui::helpKeys::redo));
     ui::describe (saveButton, "Save", ui::helpFor (ui::helpKeys::save));
@@ -253,7 +248,7 @@ void AstralayEditor::buildMainGroup()
     saveButton.onClick = [this] { showSaveDialog(); };
     loadButton.onClick = [this] { showLoadMenu(); };
 
-    for (auto* button : { &undoButton, &redoButton, &saveButton, &loadButton })
+    for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton, &saveButton, &loadButton })
     {
         button->setWantsKeyboardFocus (true);
         mainGroup.addInOrder (*button);
@@ -318,7 +313,8 @@ void AstralayEditor::buildMacrosGroup()
 
         // The value slider gets the menu too, so that a right-click on it opens it.
         controls.group.setContextMenu ([this, m] { showMacroMenu (m); });
-        controls.value.setContextMenu ([this, m] { showMacroMenu (m); });
+        controls.value.setContextMenu ([this, m] { showMacroMenu (m, true); });
+        controls.arm.setContextMenu ([this, m] { showMacroMenu (m); });
 
         controls.group.addInOrder (controls.arm);
         controls.group.addInOrder (controls.value);
@@ -434,6 +430,7 @@ double AstralayEditor::armedAmountFor (const juce::String& parameterId) const
 
 void AstralayEditor::armMacro (int macroIndex)
 {
+    processor.getMidiMappings().cancelLearn();
     if (macroIndex == armedMacro)
         return;
 
@@ -520,7 +517,7 @@ void AstralayEditor::changeListenerCallback (juce::ChangeBroadcaster*)
     refreshMacros();
 }
 
-void AstralayEditor::showMacroMenu (int macroIndex)
+void AstralayEditor::showMacroMenu (int macroIndex, bool fromValue)
 {
     constexpr int renameItem = 1, bipolarItem = 2, firstModulationItem = 100;
 
@@ -566,13 +563,16 @@ void AstralayEditor::showMacroMenu (int macroIndex)
     }
 
     menu.addItem (bipolarItem, "Bipolar", true, macro.bipolar);
+    const auto midiId = appendMidiMenu (menu, fromValue ? static_cast<juce::Component&> (controls.value)
+                                                      : static_cast<juce::Component&> (controls.arm));
 
     showMenu (menu, controls.group, [safeThis = SafePointer<AstralayEditor> (this), macroIndex, targets, origin,
-                                     bipolar = macro.bipolar] (int result)
+                                     bipolar = macro.bipolar, midiId] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
 
+        if (safeThis->midiMenuResult (result, midiId)) return;
         if (result == renameItem)
         {
             safeThis->showRenamePrompt (macroIndex, origin.getComponent());
@@ -738,6 +738,7 @@ void AstralayEditor::refreshTapName (int tapIndex, bool on)
 //==============================================================================
 bool AstralayEditor::keyPressed (const juce::KeyPress& key)
 {
+    if (handleMidiKey (key)) return true;
     const auto mods = key.getModifiers();
 
     if (keyLayer.handleKey (key))
@@ -800,6 +801,7 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
     if (shortcutModifier && (key.getKeyCode() == 'm' || key.getKeyCode() == 'M')
         && dynamic_cast<juce::TextEditor*> (juce::Component::getCurrentlyFocusedComponent()) == nullptr)
     {
+        processor.getMidiMappings().cancelLearn();
         keyLayer.open (key, "Arm?", [this] (const juce::KeyPress& next) { return handleArmKey (next); });
         return true;
     }
@@ -988,11 +990,13 @@ bool AstralayEditor::handleClipboardKey (const juce::KeyPress& key)
 
 void AstralayEditor::undo()
 {
+    processor.getMidiMappings().flushCapture();
     announce (processor.getHistory().undo());
 }
 
 void AstralayEditor::redo()
 {
+    processor.getMidiMappings().flushCapture();
     announce (processor.getHistory().redo());
 }
 
@@ -1024,6 +1028,7 @@ void AstralayEditor::showSaveDialog()
 
 void AstralayEditor::showLoadMenu()
 {
+    processor.getMidiMappings().cancelLearn();
     juce::PopupMenu factoryMenu;
     const auto& factory = astralay::state::Presets::factory();
 
@@ -1048,6 +1053,7 @@ void AstralayEditor::showLoadMenu()
 
 void AstralayEditor::showLoadDialog()
 {
+    processor.getMidiMappings().cancelLearn();
     const auto folder = astralay::state::Presets::userFolder();
     folder.createDirectory();
 
@@ -1089,12 +1095,14 @@ void AstralayEditor::showOutputClipMenu (juce::Component& target)
 
     for (int i = 0; i < (int) items.size(); ++i)
         menu.addItem (i + 1, items[(size_t) i], true, i == current);
+    const auto midiId = appendMidiMenu (menu, target);
 
-    showMenu (menu, target, [safeThis = SafePointer<AstralayEditor> (this)] (int result)
+    showMenu (menu, target, [safeThis = SafePointer<AstralayEditor> (this), midiId] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
 
+        if (safeThis->midiMenuResult (result, midiId)) return;
         safeThis->processor.setOutputClip ((params::OutputClip) (result - 1));
         safeThis->announce (items[(size_t) (result - 1)]);
     });
@@ -1111,12 +1119,14 @@ void AstralayEditor::showPitchModeMenu (juce::Component& target)
 
     for (int i = 0; i < choices.size(); ++i)
         menu.addItem (i + 1, choices[i], true, i == current);
+    const auto midiId = appendMidiMenu (menu, target);
 
-    showMenu (menu, target, [safeThis = SafePointer<AstralayEditor> (this), parameter, choices, current] (int result)
+    showMenu (menu, target, [safeThis = SafePointer<AstralayEditor> (this), parameter, choices, current, midiId] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
 
+        if (safeThis->midiMenuResult (result, midiId)) return;
         if (result - 1 != current)
         {
             parameter->beginChangeGesture();
@@ -1242,6 +1252,9 @@ void AstralayEditor::announce (const juce::String& text)
 
 void AstralayEditor::globalFocusChanged (juce::Component* focused)
 {
+    if (midiKeyTarget != nullptr) midiKeyTarget->removeKeyListener (this);
+    midiKeyTarget = focused != nullptr && isParentOf (focused) ? focused : nullptr;
+    if (midiKeyTarget != nullptr) midiKeyTarget->addKeyListener (this);
     if (focusOutline != nullptr)
         focusOutline->setTarget (focused);
 
@@ -1290,7 +1303,7 @@ void AstralayEditor::resized()
     {
         auto row = mainGroup.getContentBounds();
 
-        for (auto* button : { &undoButton, &redoButton, &saveButton, &loadButton })
+        for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton, &saveButton, &loadButton })
         {
             button->setBounds (row.removeFromLeft (110));
             row.removeFromLeft (gap);

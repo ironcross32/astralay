@@ -34,6 +34,8 @@ class AstralayEditor final : public juce::AudioProcessorEditor,
                              private juce::FocusChangeListener,
                              private juce::ValueTree::Listener,
                              private juce::ChangeListener,
+                             private juce::KeyListener,
+                             private juce::Timer,
                              private juce::AsyncUpdater
 {
 public:
@@ -77,7 +79,7 @@ private:
         explicit MacroControls (const juce::String& title) : group (title) {}
 
         astralay::ui::AccessibleGroup group;
-        juce::TextButton arm;
+        astralay::ui::MenuControl<juce::TextButton> arm;
         astralay::ui::ParameterSlider value;
     };
 
@@ -128,7 +130,7 @@ private:
         with the processor.
     */
     void refreshMacros();
-    void showMacroMenu (int macroIndex);
+    void showMacroMenu (int macroIndex, bool fromValue = false);
     void showRenamePrompt (int macroIndex, juce::Component* focusAfterwards);
     void showAmountPrompt (int macroIndex, const juce::String& parameterId, juce::Component* focusAfterwards);
 
@@ -178,6 +180,26 @@ private:
     bool showContextMenuForFocus();
     void showOutputClipMenu (juce::Component& target);
     void showPitchModeMenu (juce::Component& target);
+    void setupMidiControls();
+    juce::String midiTarget (juce::Component*) const;
+    bool selectMidiTarget (juce::Component&);
+    void startMidiLearn (const juce::String& target);
+    void toggleMidiLearn();
+    bool handleMidiKey (const juce::KeyPress&);
+    bool keyPressed (const juce::KeyPress&, juce::Component*) override;
+    void showMenu (juce::PopupMenu&, juce::Component&, std::function<void (int)>);
+    void timerCallback() override;
+    void showControlMenu (juce::Component&);
+    juce::String appendMidiMenu (juce::PopupMenu&, juce::Component&);
+    bool midiMenuResult (int, const juce::String&);
+    void showMainMenu();
+    void saveMidiMapping (bool saveAs, std::function<void()> after = {});
+    void writeMidiMapping (const juce::File&, std::function<void()> after);
+    void loadMidiMapping (const juce::File&);
+    void defaultMidiMapping();
+    void confirmMidi (const juce::String&, const juce::String&, const juce::StringArray&, std::function<void (int)>);
+    juce::Component::SafePointer<juce::Component> midiKeyTarget;
+    std::vector<juce::Component::SafePointer<juce::Component>> midiMenuKeyTargets;
 
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
     void valueTreeRedirected (juce::ValueTree&) override;
@@ -210,12 +232,13 @@ private:
                                   globalGroup { "Global" }, performanceGroup { "Performance" };
 
     // Main
-    juce::TextButton undoButton { "Undo" }, redoButton { "Redo" }, saveButton { "Save" }, loadButton { "Load" };
-    juce::Label presetName;
+    astralay::ui::MenuControl<juce::TextButton> mainMenuButton { "Main menu" }, midiLearnButton { "MIDI learn" },
+        undoButton { "Undo" }, redoButton { "Redo" }, saveButton { "Save" }, loadButton { "Load" };
+    astralay::ui::MenuControl<juce::Label> presetName;
 
     // Tap
     juce::Label tapSelectorLabel;
-    juce::ComboBox tapSelector;
+    astralay::ui::MenuControl<juce::ComboBox> tapSelector;
     astralay::ui::ParameterToggle tapEnabled { "Enabled" };
     std::vector<LayoutItem> tapBasics;
     std::vector<GlitchSection> glitchSections;

@@ -34,6 +34,10 @@ private:
     static juce::AccessibilityActions actionsFor (ParameterSlider& s)
     {
         juce::AccessibilityActions actions;
+        actions.addAction (juce::AccessibilityActionType::press, [&s]
+        {
+            if (! s.selectMidiTarget || ! s.selectMidiTarget()) s.showTypeIn();
+        });
 
         if (s.hasContextMenu())
             actions.addAction (juce::AccessibilityActionType::showMenu, [&s] { s.showContextMenu(); });
@@ -355,6 +359,7 @@ void ParameterSlider::setFromUser (double newValue)
 
 bool ParameterSlider::keyPressed (const juce::KeyPress& key)
 {
+    if (key.isKeyCode (juce::KeyPress::returnKey) && selectMidiTarget && selectMidiTarget()) return true;
     if (parameter == nullptr)
         return false;
 
@@ -434,6 +439,8 @@ void ParameterSlider::mouseDown (const juce::MouseEvent& e)
 
     if (menuClick)
         showContextMenu();
+    else if (selectMidiTarget && selectMidiTarget())
+        menuClick = true;
     else
         Slider::mouseDown (e);
 }

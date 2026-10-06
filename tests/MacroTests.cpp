@@ -340,8 +340,9 @@ public:
                 expect (dynamic_cast<ui::ContextMenuTarget*> (group) != nullptr);
                 expect (group->getAccessibilityHandler()->getActions().contains (juce::AccessibilityActionType::showMenu));
 
-                // The controls inside have no menu of their own to hint at, so they offer the macro's.
-                expect (ui::findContextMenu (findByTitle (ed, "Arm Macro 1")) == dynamic_cast<ui::ContextMenuTarget*> (group));
+                // Each owning control has a menu; the arm menu cannot learn the macro value.
+                auto* armControl = findByTitle (ed, "Arm Macro 1");
+                expect (ui::findContextMenu (armControl) == dynamic_cast<ui::ContextMenuTarget*> (armControl));
             }
 
             // Renaming and making it bipolar show up on the controls.

@@ -121,6 +121,15 @@ AstralayProcessor::AstralayProcessor()
     activeRoutes.reserve (pendingRoutes.capacity());
 
     setPresetInfo ("Init", false);
+    midiMappings.onSoundChanged = [this]
+    {
+        if (midiModified.load())
+            state.state.setProperty (presetModifiedProperty, true, nullptr);
+    };
+    midiMappings.onMappingChanged = [this]
+    {
+        updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+    };
 
     history.onUserEdit = [this]
     {
@@ -149,11 +158,12 @@ juce::String AstralayProcessor::getPresetName() const
 
 bool AstralayProcessor::isPresetModified() const
 {
-    return (bool) state.state.getProperty (presetModifiedProperty, false);
+    return midiModified.load() || (bool) state.state.getProperty (presetModifiedProperty, false);
 }
 
 void AstralayProcessor::setPresetInfo (const juce::String& name, bool modified)
 {
+    midiModified.store (false);
     state.state.setProperty (presetNameProperty, name, nullptr);
     state.state.setProperty (presetModifiedProperty, modified, nullptr);
 }
@@ -175,6 +185,7 @@ juce::String AstralayProcessor::applyPreset (const astralay::state::History::Sna
 
 juce::String AstralayProcessor::loadFactoryPreset (int index)
 {
+    midiMappings.cancelLearn();
     const auto& presets = astralay::state::Presets::factory();
 
     if (! juce::isPositiveAndBelow (index, (int) presets.size()))
@@ -185,6 +196,7 @@ juce::String AstralayProcessor::loadFactoryPreset (int index)
 
 juce::String AstralayProcessor::loadPresetFile (const juce::File& file)
 {
+    midiMappings.cancelLearn();
     const auto xml = juce::XmlDocument::parse (file);
     astralay::state::History::Snapshot preset;
 
@@ -577,7 +589,7 @@ void AstralayProcessor::updateModulatedValues()
     }
 }
 
-void AstralayProcessor::updateEngineSettings()
+void AstralayProcessor::updateEngineSettings (int sampleOffset)
 {
     using namespace astralay;
 
@@ -585,7 +597,12 @@ void AstralayProcessor::updateEngineSettings()
 
     const auto sampleRate = getSampleRate() > 0.0 ? getSampleRate() : 44100.0;
     const auto synced = globalParameters.sync->load() >= 0.5f;
-    const auto host = readHost();
+    auto host = readHost();
+    if (host.playing)
+    {
+        host.ppq += (double) sampleOffset * host.bpm / (sampleRate * 60.0);
+        if (host.samplePosition) *host.samplePosition += sampleOffset;
+    }
     const auto samplesPerQuarter = sampleRate * 60.0 / host.bpm;
     const auto& notes = NoteValues::all();
 
@@ -684,11 +701,9 @@ void AstralayProcessor::updateEngineSettings()
     }
 }
 
-void AstralayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void AstralayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
-
-    updateEngineSettings();
 
     const auto numSamples = buffer.getNumSamples();
     const auto monoInput = getTotalNumInputChannels() == 1;
@@ -696,7 +711,25 @@ void AstralayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     auto* left = buffer.getWritePointer (0);
     auto* right = buffer.getWritePointer (1);
 
-    engine.process (left, monoInput ? nullptr : right, left, right, numSamples);
+    int cursor = 0;
+    const auto renderTo = [&] (int end)
+    {
+        if (end <= cursor) return;
+        updateEngineSettings (cursor);
+        engine.process (left + cursor, monoInput ? nullptr : right + cursor,
+                        left + cursor, right + cursor, end - cursor);
+        cursor = end;
+    };
+    for (const auto metadata : midi)
+    {
+        if (metadata.numBytes < 3 || ((metadata.data[0] & 0xf0) != 0xb0 && (metadata.data[0] & 0xf0) != 0xe0)) continue;
+        const auto message = metadata.getMessage();
+        if (! message.isController() && ! message.isPitchWheel()) continue;
+        renderTo (juce::jlimit (0, numSamples, metadata.samplePosition));
+        if (midiMappings.process (message)) midiModified.store (true);
+    }
+    renderTo (numSamples);
+    // Leave every MIDI byte and timestamp in the host's buffer untouched.
 }
 
 int AstralayProcessor::getSelectedTap() const
@@ -719,10 +752,12 @@ void AstralayProcessor::getStateInformation (juce::MemoryBlock& destData)
     auto copy = state.copyState();
     copy.setProperty ("version", stateVersion, nullptr);
     copy.setProperty (outputClipProperty, (int) outputClip.load(), nullptr);
+    copy.setProperty (presetModifiedProperty, isPresetModified(), nullptr);
 
     if (const auto xml = copy.createXml())
     {
         xml->addChildElement (astralay::state::Macros::toXml (getMacros()).release());
+        xml->addChildElement (midiMappings.projectState().release());
         copyXmlToBinary (*xml, destData);
     }
 }
@@ -733,6 +768,10 @@ void AstralayProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     if (xml == nullptr || ! xml->hasTagName (state.state.getType()))
         return;
+
+    midiMappings.restoreProject (xml->getChildByName ("MidiMapping"));
+    xml->removeChildElement (xml->getChildByName ("MidiMapping"), true);
+    midiModified.store (false);
 
     // Before the parameters, since a macro's saved value is in the range these settings give it.
     // Sessions saved before there were macros get the default settings. The element is taken out

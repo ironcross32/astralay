@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include "ContextMenu.h"
 
 namespace astralay::ui
 {
@@ -21,7 +22,7 @@ int tapIndexForKey (const juce::KeyPress& key);
     It shows a cell per tap, which can also be clicked, and whether freeze is on. It owns no plugin
     state: the owner supplies the selection and carries out what the callbacks ask for.
 */
-class PerformancePad final : public juce::Component,
+class PerformancePad final : public MenuControl<juce::Component>,
                              private juce::Timer
 {
 public:

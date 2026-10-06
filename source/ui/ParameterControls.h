@@ -67,6 +67,7 @@ class ParameterSlider final : public juce::Slider,
 {
 public:
     ParameterSlider();
+    std::function<bool()> selectMidiTarget;
     ~ParameterSlider() override;
 
     /** Binds to a parameter. helpKey selects the help text. For note-value choice parameters,
@@ -138,7 +139,7 @@ private:
 };
 
 /** An on/off button bound to a bool parameter, rebindable. */
-class ParameterToggle final : public juce::ToggleButton
+class ParameterToggle final : public MenuControl<juce::ToggleButton>
 {
 public:
     explicit ParameterToggle (const juce::String& visibleLabel);
@@ -150,7 +151,7 @@ private:
 };
 
 /** A drop-down list bound to a choice parameter. */
-class ParameterChoice final : public juce::ComboBox
+class ParameterChoice final : public MenuControl<juce::ComboBox>
 {
 public:
     void bind (juce::RangedAudioParameter& parameter, const juce::String& helpKey);

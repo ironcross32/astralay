@@ -12,11 +12,11 @@ namespace
     constexpr float filterQ = 0.70710678f; // Butterworth, 12 dB per octave.
 }
 
-void Tap::prepare (double newSampleRate, int maxDelaySamples)
+void Tap::prepare (double newSampleRate, int maxDelaySamples, int tapIndex)
 {
     sampleRate = newSampleRate;
     line.prepare (maxDelaySamples);
-    glitches.prepare (sampleRate, (double) maxDelaySamples / sampleRate);
+    glitches.prepare (sampleRate, (double) maxDelaySamples / sampleRate, tapIndex);
     freezeSustain.prepare (sampleRate, maxDelaySamples);
 
     const juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
@@ -99,7 +99,7 @@ void Tap::setSettings (const TapSettings& s, float glideSeconds, const GlitchGlo
     }
 }
 
-void Tap::process (float input, float freeze, float& left, float& right, bool sustain) noexcept
+void Tap::process (float input, float freeze, float& left, float& right, bool sustain, int formantClock) noexcept
 {
     // A varispeed pitch glitch changes the delay time, and the glide to it bends the pitch.
     if (const auto scale = glitches.getDelayScale(); ! juce::exactlyEqual (scale, delayScale))
@@ -125,7 +125,7 @@ void Tap::process (float input, float freeze, float& left, float& right, bool su
 
     glitches.setLoop (delaySamples, loopGain);
     const auto saved = freezeSustain.next (sustain, freeze, delayPosition, line, glitches);
-    const auto glitchOutput = glitches.process (delayed, saved.amount, saved.state.pitch, saved.state.formant);
+    const auto glitchOutput = glitches.process (delayed, saved.amount, saved.state.pitch, saved.state.formant, formantClock);
     freezeSustain.observe (glitchOutput);
 
     // Nothing that isn't a number may reach the output or go back into the delay line, where it

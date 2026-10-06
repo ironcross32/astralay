@@ -32,7 +32,7 @@ struct TapSettings
 class Tap
 {
 public:
-    void prepare (double sampleRate, int maxDelaySamples);
+    void prepare (double sampleRate, int maxDelaySamples, int tapIndex = 0);
     void reset();
 
     /** Call once per block before processing. glideSeconds is the global glide time. */
@@ -61,7 +61,7 @@ public:
     /** Processes one sample and adds the tap's panned output to left and right.
         freeze runs from 0 (off) to 1 (fully frozen).
     */
-    void process (float input, float freeze, float& left, float& right, bool sustain = false) noexcept;
+    void process (float input, float freeze, float& left, float& right, bool sustain = false, int formantClock = -1) noexcept;
 
     /** Call at the end of each block. Flushes filter denormals and finishes fading out. */
     void endBlock() noexcept;

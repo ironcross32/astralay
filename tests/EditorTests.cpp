@@ -70,14 +70,14 @@ public:
             for (auto* c : stops)
                 titles.add (titleOf (*c));
 
-            // Main 5, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
+            // Main 7, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
             // each of the 8 macros, global 16, performance 1.
-            expectEquals ((int) stops.size(), 79);
+            expectEquals ((int) stops.size(), 81);
 
-            if (stops.size() != 79)
+            if (stops.size() != 81)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
-            const juce::StringArray expectedStart { "Undo", "Redo", "Save", "Load", "Preset: Init",
+            const juce::StringArray expectedStart { "Main menu", "MIDI learn", "Undo", "Redo", "Save", "Load", "Preset: Init",
                                                     "Selected tap", "Tap 1 Enabled", "Tap 1 Time",
                                                     "Tap 1 Volume", "Tap 1 Pan", "Tap 1 Feedback",
                                                     "Tap 1 Low Cut", "Tap 1 High Cut",
@@ -97,7 +97,7 @@ public:
             for (int i = 0; i < expectedEnd.size(); ++i)
                 expectEquals (titles[titles.size() - expectedEnd.size() + i], expectedEnd[i]);
 
-            expectEquals (titles.indexOf ("Tap 1 Bit Crusher Maximum Rate Reduction"), 45);
+            expectEquals (titles.indexOf ("Tap 1 Bit Crusher Maximum Rate Reduction"), 47);
         }
 
         beginTest ("Controls sit inside named groups for VoiceOver");
@@ -494,14 +494,14 @@ public:
                 auto* mixMenu = dynamic_cast<astralay::ui::ContextMenuTarget*> (mix);
 
                 expect (gainMenu != nullptr && gainMenu->hasContextMenu());
-                expect (mixMenu != nullptr && ! mixMenu->hasContextMenu());
+                expect (mixMenu != nullptr && mixMenu->hasContextMenu());
 
                 expect (gain->getAccessibilityHandler()->getActions().contains (showMenu));
-                expect (! mix->getAccessibilityHandler()->getActions().contains (showMenu));
+                expect (mix->getAccessibilityHandler()->getActions().contains (showMenu));
 
                 // What decides whether "has context menu" is spoken on focus.
                 expect (astralay::ui::findContextMenu (gain) == gainMenu);
-                expect (astralay::ui::findContextMenu (mix) == nullptr);
+                expect (astralay::ui::findContextMenu (mix) == mixMenu);
                 expect (astralay::ui::findContextMenu (nullptr) == nullptr);
 
                 // The hint is for moving to a control, not for focus coming back to it from a menu.
@@ -518,7 +518,7 @@ public:
                 expect (! hint.isPending());
 
                 hint.focusChanged (mix);
-                expect (! hint.isPending());
+                expect (hint.isPending());
 
                 hint.focusChanged (gain);
                 expect (hint.isPending());

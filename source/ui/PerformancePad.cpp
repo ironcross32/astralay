@@ -217,6 +217,7 @@ juce::Rectangle<int> PerformancePad::cellArea() const
 
 void PerformancePad::mouseDown (const juce::MouseEvent& event)
 {
+    if (event.mods.isPopupMenu()) { showContextMenu(); return; }
     const auto area = cellArea();
 
     if (! area.contains (event.getPosition()) || area.getWidth() <= 0)
@@ -262,7 +263,9 @@ void PerformancePad::paint (juce::Graphics& g)
 std::unique_ptr<juce::AccessibilityHandler> PerformancePad::createAccessibilityHandler()
 {
     // An image is the nearest role to a canvas that screen readers name on both platforms.
-    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::image);
+    juce::AccessibilityActions actions;
+    actions.addAction (juce::AccessibilityActionType::showMenu, [this] { showContextMenu(); });
+    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::image, actions);
 }
 
 } // namespace astralay::ui

@@ -37,7 +37,7 @@ namespace
     }
 }
 
-void GlitchChain::prepare (double newSampleRate, double maxLoopSeconds)
+void GlitchChain::prepare (double newSampleRate, double maxLoopSeconds, int tapIndex)
 {
     sampleRate = newSampleRate;
 
@@ -59,8 +59,8 @@ void GlitchChain::prepare (double newSampleRate, double maxLoopSeconds)
     slice.assign ((size_t) samples (sliceCapSeconds), 0.0f);
     pitchWindow = (float) (pitchWindowSeconds * sampleRate);
 
-    lpcShifter.prepare (sampleRate, FormantShifter::Method::lpc);
-    cepstralShifter.prepare (sampleRate, FormantShifter::Method::cepstral);
+    lpcShifter.prepare (sampleRate, FormantShifter::Method::lpc, 2 * tapIndex);
+    cepstralShifter.prepare (sampleRate, FormantShifter::Method::cepstral, 2 * tapIndex + 1);
 
     // As far back as the middle of a frame taken from two frames back in a short loop.
     lpcTrack.prepare (3 * lpcShifter.getFrameSize() + 8);
@@ -405,7 +405,7 @@ float GlitchChain::applyFormantStage (GlitchType type, FormantShifter& shifter, 
     shifter.setShift (target - track.back (shifter.getFrameCentreLag()));
 
     const auto wet = shifter.next();
-    const auto gain = envelope (type);
+    const auto gain = envelope (type) * shifter.getStartupGain();
     formantOffset += (target - formantOffset) * gain;
 
     const auto y = dry + (wet - dry) * gain;
@@ -413,7 +413,7 @@ float GlitchChain::applyFormantStage (GlitchType type, FormantShifter& shifter, 
     return y;
 }
 
-float GlitchChain::process (float input, float restoredAmount, float restoredPitch, float restoredFormant) noexcept
+float GlitchChain::process (float input, float restoredAmount, float restoredPitch, float restoredFormant, int formantClock) noexcept
 {
     auto y = input;
 
@@ -471,14 +471,14 @@ float GlitchChain::process (float input, float restoredAmount, float restoredPit
     if (trackingFormants)
         lpcTrack.push (formantOffset);
 
-    lpcShifter.push (y);
+    lpcShifter.push (y, formantClock);
     if (isActive (GlitchType::lpcFormant))
         y = applyFormantStage (GlitchType::lpcFormant, lpcShifter, lpcTrack, lpcTarget, y);
 
     if (trackingFormants)
         cepstralTrack.push (formantOffset);
 
-    cepstralShifter.push (y);
+    cepstralShifter.push (y, formantClock);
     if (isActive (GlitchType::cepstralFormant))
         y = applyFormantStage (GlitchType::cepstralFormant, cepstralShifter, cepstralTrack, cepstralTarget, y);
 

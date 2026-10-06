@@ -522,6 +522,9 @@ AstralayProcessor::HostInfo AstralayProcessor::readHost() const
 
             info.playing = position->getIsPlaying();
 
+            if (const auto samples = position->getTimeInSamples(); samples.hasValue())
+                info.samplePosition = *samples;
+
             if (const auto ppq = position->getPpqPosition(); ppq.hasValue())
             {
                 info.hasPosition = true;
@@ -620,6 +623,7 @@ void AstralayProcessor::updateEngineSettings()
 
     dsp::TransportInfo transport;
     transport.playing = host.playing;
+    transport.samplePosition = host.samplePosition;
     transport.hasPosition = host.hasPosition;
     transport.ppq = host.ppq;
     transport.samplesPerQuarter = samplesPerQuarter;

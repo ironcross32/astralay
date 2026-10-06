@@ -115,7 +115,7 @@ Every glitch type has a probability control, 0% to 100%, default 0%. Additional 
 ### Randomness
 
 - A reproducible randomness toggle (default off) and a seed (integer, 0 to 9999) are global controls.
-- When the toggle is on, the random sequence restarts from the seed every time the host transport starts, so every play-through and bounce glitches identically.
+- When the toggle is on, the random sequence restarts from the seed every time the host transport starts. Reset/preparation clears the previous transport state so the next start uses the current seed. When the host supplies a sample position, a discontinuity also restarts the sequence, covering seeks, loop wraps and hosts that omit stopped callbacks. Tracking uses the actual processed block length, independent of tempo and host sync. If a host provides neither a stopped callback nor preparation nor a position discontinuity (including resuming at exactly the next sample), the restart cannot be detected.
 - When the toggle is off, the seed has no effect, and its help tag says so.
 - Each tap derives its seed by multiplying the base seed by 1000003 and adding the tap index, using unsigned 64-bit arithmetic with defined wrapping. The resulting bits are reinterpreted for JUCE's signed seed API. This keeps existing user-seeded sequences and avoids signed overflow for full-width random seeds.
 

@@ -2,6 +2,7 @@
 #include "dsp/Engine.h"
 #include "dsp/GlitchChain.h"
 #include "dsp/Seed.h"
+#include "PluginProcessor.h"
 #include <limits>
 
 namespace
@@ -139,6 +140,35 @@ namespace
         run.transport.playing = true;
         return run;
     }
+
+    // Observe actual scheduler decisions without depending on delay tails from an earlier pass.
+    std::vector<int> schedule (Engine& engine, TransportInfo& transport)
+    {
+        std::vector<int> result;
+        std::array<float, blockSize> silence {}, left {}, right {};
+        constexpr int sizes[] { 1, 127, 256, 93 };
+        for (int elapsed = 0, block = 0; elapsed < 48000; ++block)
+        {
+            const auto n = std::min (sizes[block % 4], 48000 - elapsed);
+            engine.setTransport (transport);
+            engine.process (silence.data(), nullptr, left.data(), right.data(), n);
+            int mask = 0;
+            for (int type = 0; type < numGlitchTypes; ++type)
+                if (engine.getTap (0).getGlitches().isActive ((GlitchType) type))
+                    mask |= 1 << type;
+            result.push_back (mask);
+            if (transport.samplePosition)
+                *transport.samplePosition += n;
+            elapsed += n;
+        }
+        return result;
+    }
+
+    struct SamplePlayHead final : juce::AudioPlayHead
+    {
+        PositionInfo position;
+        juce::Optional<PositionInfo> getPosition() const override { return position; }
+    };
 }
 
 class GlitchTests final : public juce::UnitTest
@@ -189,6 +219,133 @@ public:
 
             seeded.global.seed = 43;
             expect (first != runEngine (seeded, input));
+        }
+
+        beginTest ("Reproducible transport restarts survive missing stopped callbacks and preparation");
+        {
+            auto run = glitchyRun();
+            run.global.reproducible = true;
+            run.global.seed = 42;
+            Engine engine;
+            engine.prepare (rate, blockSize, 2.0);
+            engine.setGlobalSettings (run.global);
+            engine.setTapSettings (0, run.tap);
+            auto transport = run.transport;
+            transport.samplePosition = -48000; // Include preroll and variable block sizes.
+            const auto first = schedule (engine, transport);
+            expect (schedule (engine, transport) != first, "Continuous playback must advance the sequence");
+
+            transport.samplePosition = -48000;
+            expect (schedule (engine, transport) == first, "Restart without a stopped callback");
+            transport.samplePosition = 200000;
+            expect (schedule (engine, transport) == first, "Forward seek");
+            transport.samplePosition = -48000;
+            expect (schedule (engine, transport) == first, "Loop wrap");
+
+            transport.playing = false;
+            engine.setTransport (transport);
+            transport.playing = true;
+            expect (schedule (engine, transport) == first, "Ordinary stop/start");
+
+            transport.samplePosition.reset();
+            engine.reset();
+            expect (schedule (engine, transport) == first, "Reset without host position");
+            engine.prepare (rate, blockSize, 2.0);
+            // Settings can change after prepare, as they do in prepareToPlay.
+            run.global.seed = 43;
+            engine.setGlobalSettings (run.global);
+            engine.setTapSettings (0, run.tap);
+            const auto prepared = schedule (engine, transport);
+            transport.playing = false;
+            engine.setTransport (transport);
+            transport.playing = true;
+            expect (schedule (engine, transport) == prepared, "Preparation must use the current seed on play");
+            expect (prepared != first, "Different seeds must produce different decisions");
+        }
+
+        beginTest ("Sample position tracking leaves continuous playback and unseeded playback alone");
+        {
+            auto run = glitchyRun();
+            run.global.reproducible = true;
+            run.global.seed = 42;
+            Engine tracked, reference;
+            for (auto* engine : { &tracked, &reference })
+            {
+                engine->prepare (rate, blockSize, 2.0);
+                engine->setGlobalSettings (run.global);
+                engine->setTapSettings (0, run.tap);
+            }
+            auto withPosition = run.transport, withoutPosition = run.transport;
+            withPosition.samplePosition = 0;
+            expect (schedule (tracked, withPosition) == schedule (reference, withoutPosition));
+            expect (schedule (tracked, withPosition) == schedule (reference, withoutPosition));
+            withPosition.samplePosition.reset();
+            expect (schedule (tracked, withPosition) == schedule (reference, withoutPosition), "Position disappears");
+            withPosition.samplePosition = 0;
+            expect (schedule (tracked, withPosition) == schedule (reference, withoutPosition), "Position reappears");
+            run.global.reproducible = false;
+            tracked.setGlobalSettings (run.global);
+            reference.setGlobalSettings (run.global);
+            withPosition.samplePosition = 0;
+            expect (schedule (tracked, withPosition) == schedule (reference, withoutPosition), "Toggle off ignores jumps");
+        }
+
+        beginTest ("The processor detects a host restart without stopped callbacks or PPQ");
+        {
+            using namespace astralay::params;
+            SamplePlayHead skippedStop, reportedStop;
+            AstralayProcessor actual, reference;
+            actual.setPlayHead (&skippedStop);
+            reference.setPlayHead (&reportedStop);
+            for (auto* host : { &skippedStop, &reportedStop })
+            {
+                host->position.setIsPlaying (true);
+                host->position.setTimeInSamples (0);
+            }
+            for (auto* processor : { &actual, &reference })
+            {
+                const auto set = [&] (const juce::String& id, float value)
+                {
+                    auto* p = processor->getState().getParameter (id);
+                    p->setValueNotifyingHost (p->convertTo0to1 (value));
+                };
+                set (global::reproducible, 1.0f);
+                set (global::seed, 42.0f);
+                set (global::sync, 0.0f);
+                set (global::threshold, 100.0f);
+                set (global::placement, 1.0f);
+                set (global::bufferSize, 50.0f);
+                set (global::mix, 100.0f);
+                set (tapId (0, tap::time), 25.0f);
+                set (tapId (0, tap::reverseProb), 50.0f);
+                set (tapId (0, tap::crushProb), 50.0f);
+                processor->prepareToPlay (rate, blockSize);
+            }
+            juce::MidiBuffer midi;
+            const auto render = [&] (AstralayProcessor& processor, SamplePlayHead& host)
+            {
+                std::vector<float> output;
+                for (int start = 0; start < (int) input.size(); start += blockSize)
+                {
+                    const auto n = std::min (blockSize, (int) input.size() - start);
+                    juce::AudioBuffer<float> buffer (2, n);
+                    for (int channel = 0; channel < 2; ++channel)
+                        buffer.copyFrom (channel, 0, input.data() + start, n);
+                    host.position.setTimeInSamples (start);
+                    processor.processBlock (buffer, midi);
+                    output.insert (output.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + n);
+                }
+                return output;
+            };
+            expect (render (actual, skippedStop) == render (reference, reportedStop));
+            // Both processors retain identical audio tails. Only one receives a stopped callback.
+            reportedStop.position.setIsPlaying (false);
+            juce::AudioBuffer<float> empty (2, 0);
+            reference.processBlock (empty, midi);
+            reportedStop.position.setIsPlaying (true);
+            expect (render (actual, skippedStop) == render (reference, reportedStop));
+            actual.releaseResources();
+            reference.releaseResources();
         }
 
         beginTest ("Defined seed wrapping preserves user-seeded sequences and keeps taps distinct");

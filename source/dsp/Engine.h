@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include "DcBlocker.h"
 #include "Smear.h"
 #include "Tap.h"
@@ -34,6 +35,7 @@ struct TransportInfo
     double samplesPerQuarter = 0.0;
     bool synced = false;            // Host sync is on, so chunks follow the beat grid.
     double chunkQuarters = 0.25;    // Chunk length in quarter notes when synced.
+    std::optional<juce::int64> samplePosition; // Host timeline, independent of tempo and sync.
 };
 
 /** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, a DC blocker and smear on
@@ -52,7 +54,8 @@ public:
     void setTapSettings (int tapIndex, const TapSettings& settings);
 
     /** Call once per block before process(). Aligns the chunk grid to the host's beats when synced,
-        and restarts the random sequences when the transport starts with reproducible randomness on.
+        and restarts the random sequences on playback starts and timeline jumps when reproducible
+        randomness is on. A missing sample position disables jump detection for that block.
     */
     void setTransport (const TransportInfo& transport);
 
@@ -85,6 +88,7 @@ private:
 
     int samplesToChunk = 0;
     bool wasPlaying = false;
+    std::optional<juce::int64> expectedSamplePosition;
 };
 
 } // namespace astralay::dsp

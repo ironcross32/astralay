@@ -1,6 +1,7 @@
 #include "Engine.h"
 #include "Finite.h"
 #include "Seed.h"
+#include <limits>
 
 namespace astralay::dsp
 {
@@ -53,10 +54,15 @@ void Engine::restartRandomness (juce::int64 baseSeed)
 
 void Engine::setTransport (const TransportInfo& transport)
 {
-    if (transport.playing && ! wasPlaying && global.reproducible)
+    // Some hosts suspend processing while stopped, so we never see playing == false.
+    // Sample time also catches a restart/seek/loop wrap without confusing tempo changes with jumps.
+    const auto jumped = expectedSamplePosition && transport.samplePosition
+                        && *transport.samplePosition != *expectedSamplePosition;
+    if (transport.playing && (! wasPlaying || jumped) && global.reproducible)
         restartRandomness (global.seed);
 
     wasPlaying = transport.playing;
+    expectedSamplePosition = transport.playing ? transport.samplePosition : std::nullopt;
 
     if (transport.synced && transport.playing && transport.hasPosition
         && transport.chunkQuarters > 0.0 && transport.samplesPerQuarter > 0.0)
@@ -70,6 +76,9 @@ void Engine::setTransport (const TransportInfo& transport)
 
 void Engine::reset()
 {
+    wasPlaying = false;
+    expectedSamplePosition.reset();
+
     for (auto& tap : taps)
         tap.reset();
 
@@ -156,6 +165,14 @@ void Engine::process (const float* inLeft, const float* inRight, float* outLeft,
 
     for (auto& tap : taps)
         tap.endBlock();
+
+    if (expectedSamplePosition && numSamples > 0)
+    {
+        if (*expectedSamplePosition <= std::numeric_limits<juce::int64>::max() - numSamples)
+            *expectedSamplePosition += numSamples;
+        else
+            expectedSamplePosition.reset();
+    }
 }
 
 } // namespace astralay::dsp

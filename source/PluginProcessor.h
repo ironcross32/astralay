@@ -207,6 +207,7 @@ private:
         bool playing = false;
         bool hasPosition = false;
         double ppq = 0.0;
+        std::optional<juce::int64> samplePosition;
     };
 
     /** A parameter that macros can move. The engine reads value, which is the parameter's own

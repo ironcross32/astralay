@@ -16,7 +16,7 @@ Astralay is a multi-tap delay and glitch generator, built to be fully usable wit
     - frequency modulation
     - bit crusher
 - A shared glitch grid, which can follow the host's tempo, with a global threshold, glitch lengths, and a limit on how many glitches run at once.
-- Reproducible randomness: with a seed, every play-through glitches identically.
+- Reproducible randomness: playback starts restart the glitch sequence from your seed. Seeks and loop wraps also restart it when the host supplies sample positions. A host that skips stopped callbacks must report a position jump or prepare the plugin again for a restart to be detected.
 - Host sync, tape-style glide when times change, freeze, smear (diffusion), dry/wet mix, output gain and an output clip.
 - Eight macros, each moving any number of controls at once from a single value you can automate.
 - Presets, factory presets, and undo and redo.

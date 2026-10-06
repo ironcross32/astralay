@@ -142,6 +142,7 @@ if(ASTRALAY_BUILD_TESTS)
             tests/StepTests.cpp
             tests/EditorTests.cpp
             tests/GlitchTests.cpp
+            tests/ResetTests.cpp
             tests/FormantTests.cpp
             tests/SmearTests.cpp
             tests/StateTests.cpp

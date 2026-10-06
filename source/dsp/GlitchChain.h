@@ -180,6 +180,7 @@ private:
     HistoryBuffer pitchTrack;
     std::vector<float> loopTrack;
     int loopTrackIndex = 0, loopTrackCount = 0;
+    int validLoopEntries = 0;
     static constexpr int loopTrackStep = 16;
 
     float readLoopTrack (const std::vector<float>& track) const noexcept;

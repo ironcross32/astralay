@@ -46,6 +46,8 @@ This plugin is meant to be cross-platform. Version 1 targets Windows and macOS; 
 - There are 16 taps. Taps are fixed slots that can either be on or off. This is deliberate, to prevent having to renumber a deleted tap and to keep host automation stable.
 - A new instance has only tap 1 enabled. All taps off is allowed (dry signal only).
 - Disabling a tap fades it out and then clears its delay line, so re-enabling it starts silent rather than replaying old audio.
+- Audio-thread clears invalidate the delay and glitch histories, pitch/formant loop tracks, and pending formant output in constant time. Reads return zero for old samples until new writes replace them, including each interpolation neighbour. Ring positions and metadata timing are preserved. This also applies when reproducible randomness restarts or a faulty glitch is reset, avoiding bulk writes of tens of megabytes in one callback. Allocation and initial zeroing stay in preparation; no background clear or extra history allocation is needed.
+    - Measured on the development Ryzen 5 3600X: at 48 kHz, all-tap reseeding fell from about 3.7 ms to 5–9 microseconds, and simultaneous disable from about 7 ms to 5–12 microseconds. Reset cost stays roughly flat through 192 kHz. Validity checks add ordinary processing work: one before/after benchmark showed about 8–17% higher CPU cost, depending on tap count and glitching (sixteen plain taps went from 25.0 to 21.4 times real time; sixteen glitching taps from 5.0 to 4.6). These are local timings, not host dropout guarantees.
 - When selecting a tap, the tap-specific controls update dynamically to show only the values for the selected tap. The goal is to avoid cluttering the interface.
 
 Per-tap controls, with ranges and defaults:

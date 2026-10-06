@@ -57,7 +57,7 @@ void FormantShifter::prepare (double sampleRate, Method newMethod)
 void FormantShifter::reset()
 {
     history.clear();
-    std::fill (output.begin(), output.end(), 0.0f);
+    validOutputSamples = 0;
     readPosition = 0;
     samplesSinceHop = 0;
     primed = false;
@@ -79,7 +79,7 @@ void FormantShifter::start (float semitones, float loopSamples)
         lookBack = (lag + loop - 1) / loop * loop - lag;
     }
 
-    std::fill (output.begin(), output.end(), 0.0f);
+    validOutputSamples = 0;
     readPosition = 0;
     samplesSinceHop = 0;
     primed = false;
@@ -103,8 +103,8 @@ float FormantShifter::next() noexcept
         samplesSinceHop = 0;
     }
 
-    const auto sample = output[(size_t) readPosition];
-    output[(size_t) readPosition] = 0.0f;
+    const auto sample = validOutputSamples > 0 ? output[(size_t) readPosition] : 0.0f;
+    validOutputSamples = juce::jmax (0, validOutputSamples - 1);
     readPosition = (readPosition + 1) & outputMask;
     return sample;
 }
@@ -187,8 +187,14 @@ void FormantShifter::addFrame (int endsSamplesAgo, int outputOffset) noexcept
         const auto position = outputOffset + i;
 
         if (position >= 0)
-            output[(size_t) ((readPosition + position) & outputMask)] += spectrum[(size_t) i] * window[(size_t) i] * scale;
+        {
+            auto& destination = output[(size_t) ((readPosition + position) & outputMask)];
+            // A frame extends the contiguous pending output. Its new part replaces stale storage.
+            const auto previous = position < validOutputSamples ? destination : 0.0f;
+            destination = previous + spectrum[(size_t) i] * window[(size_t) i] * scale;
+        }
     }
+    validOutputSamples = juce::jmax (validOutputSamples, frameSize + outputOffset);
 }
 
 void FormantShifter::estimateEnvelope() noexcept

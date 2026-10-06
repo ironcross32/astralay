@@ -86,9 +86,11 @@ public:
         buffer.assign (size, 0.0f);
         mask = (int) size - 1;
         writeIndex = 0;
+        validSamples = 0;
     }
 
-    void clear() noexcept { std::fill (buffer.begin(), buffer.end(), 0.0f); }
+    // Invalidate in constant time; reads supply silence until fresh samples replace the old ones.
+    void clear() noexcept { validSamples = 0; }
 
     int getCapacity() const noexcept { return mask - 3; }
 
@@ -96,11 +98,14 @@ public:
     {
         writeIndex = (writeIndex + 1) & mask;
         buffer[(size_t) writeIndex] = sample;
+        validSamples = juce::jmin (validSamples + 1, mask + 1);
     }
 
     /** The sample pushed samplesAgo pushes ago; 0 is the latest. */
     float back (int samplesAgo) const noexcept
     {
+        if ((samplesAgo & mask) >= validSamples)
+            return 0.0f;
         return buffer[(size_t) ((writeIndex - samplesAgo) & mask)];
     }
 
@@ -153,6 +158,7 @@ private:
     std::vector<float> buffer;
     int mask = 0;
     int writeIndex = 0;
+    int validSamples = 0;
 };
 
 } // namespace astralay::dsp

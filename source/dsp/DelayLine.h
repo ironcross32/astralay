@@ -32,12 +32,13 @@ public:
         buffer.assign (size, 0.0f);
         mask = (int) size - 1;
         writeIndex = 0;
+        validSamples = 0;
         maxDelay = (float) maxDelaySamples;
     }
 
     void clear() noexcept
     {
-        std::fill (buffer.begin(), buffer.end(), 0.0f);
+        validSamples = 0;
     }
 
     float getMaxDelay() const noexcept { return maxDelay; }
@@ -78,6 +79,7 @@ public:
     {
         buffer[(size_t) writeIndex] = sample;
         writeIndex = (writeIndex + 1) & mask;
+        validSamples = juce::jmin (validSamples + 1, mask + 1);
     }
 
 private:
@@ -99,12 +101,17 @@ private:
 
     float at (int index) const noexcept
     {
+        // Age is measured from the last written sample, including each interpolation neighbour.
+        // Invalid storage may still contain old audio (or NaNs), so never read it after a clear.
+        if (((writeIndex - 1 - index) & mask) >= validSamples)
+            return 0.0f;
         return buffer[(size_t) (index & mask)];
     }
 
     std::vector<float> buffer;
     int mask = 0;
     int writeIndex = 0;
+    int validSamples = 0;
     float maxDelay = 0.0f;
 };
 

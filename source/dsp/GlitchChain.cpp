@@ -86,8 +86,7 @@ void GlitchChain::reset()
     pitchTrack.clear();
     lpcTrack.clear();
     cepstralTrack.clear();
-    std::fill (loopTrack.begin(), loopTrack.end(), 0.0f);
-    std::fill (formantLoopTrack.begin(), formantLoopTrack.end(), 0.0f);
+    validLoopEntries = 0;
     formantOffset = 0.0f;
     formantTrackingLeft = 0;
     pitchOffset = pitchArriving = 0.0f;
@@ -107,7 +106,7 @@ float GlitchChain::readLoopTrack (const std::vector<float>& track, float samples
     const auto back = juce::jmax (1, juce::roundToInt (juce::jmin (samplesAgo, 1.0e8f) / (float) loopTrackStep));
 
     // A loop longer than the track is no loop at all, as when setLoop() was never called.
-    if (back >= size)
+    if (back >= size || back >= validLoopEntries)
         return 0.0f;
 
     return track[(size_t) ((loopTrackIndex - back + size) % size)];
@@ -122,6 +121,7 @@ void GlitchChain::writeLoopTracks (float pitchSemitones, float formantSemitones)
     loopTrackIndex = (loopTrackIndex + 1) % (int) loopTrack.size();
     loopTrack[(size_t) loopTrackIndex] = pitchSemitones;
     formantLoopTrack[(size_t) loopTrackIndex] = formantSemitones;
+    validLoopEntries = juce::jmin (validLoopEntries + 1, (int) loopTrack.size());
 }
 
 void GlitchChain::setLoop (float newLoopSamples, float newLoopGain) noexcept

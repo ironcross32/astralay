@@ -64,6 +64,7 @@ private:
     std::vector<double> lpcCoefficients, autocorrelation;
     std::vector<float> output;
     int outputMask = 0, readPosition = 0, samplesSinceHop = 0;
+    int validOutputSamples = 0; // Contiguous pending overlap-add samples starting at readPosition.
     bool primed = false;
 };
 

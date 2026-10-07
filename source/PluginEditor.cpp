@@ -1257,9 +1257,6 @@ void AstralayEditor::globalFocusChanged (juce::Component* focused)
     if (midiKeyTarget != nullptr) midiKeyTarget->addKeyListener (this);
     if (focusOutline != nullptr)
         focusOutline->setTarget (focused);
-
-    // Focus changes arrive from the whole desktop, other plugin windows included.
-    contextMenuHint.focusChanged (focused != nullptr && isParentOf (focused) ? focused : nullptr);
 }
 
 //==============================================================================

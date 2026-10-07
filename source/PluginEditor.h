@@ -19,8 +19,7 @@ class AstralayProcessor;
     (Cmd on macOS) jump to the first control of the next or previous group. Outside the
     performance area, the number keys, minus and equals switch taps without moving focus,
     Backspace turns the selected tap on or off, and Ctrl+C and Ctrl+V copy and paste a tap or one
-    of its settings. The right bracket key opens the focused control's context menu, if it has one;
-    moving to such a control announces "has context menu".
+    of its settings. The right bracket key opens the focused control's context menu, if it has one.
 
     Macros: each has a group named after it, holding an Arm button and a value slider, with a
     context menu for renaming it, editing or clearing what it moves, and making it bipolar. While
@@ -265,7 +264,6 @@ private:
     std::unique_ptr<FocusOutline> focusOutline;
     juce::TooltipWindow tooltipWindow { this, 700 };
     astralay::ui::Announcer announcer { *this };
-    astralay::ui::ContextMenuHint contextMenuHint { announcer };
     astralay::ui::KeyLayer keyLayer { announcer };
 
     std::unique_ptr<juce::FileChooser> fileChooser;

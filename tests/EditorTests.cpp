@@ -226,13 +226,11 @@ public:
                     expect (handler->getHelp().isNotEmpty(), "No help for " + titleOf (*c));
         }
 
-        beginTest ("Help tags leave context menus to the spoken hint");
+        beginTest ("Help tags don't mention context menus");
         {
             for (auto* c : tabOrder (ed))
                 if (auto* handler = c->getAccessibilityHandler())
                     expect (! handler->getHelp().containsIgnoreCase ("menu"), "Help mentions a menu: " + titleOf (*c));
-
-            expectEquals (astralay::ui::ContextMenuHint::message(), juce::String ("has context menu"));
         }
 
         beginTest ("Selecting a tap renames the group and rebinds its controls");
@@ -499,29 +497,10 @@ public:
                 expect (gain->getAccessibilityHandler()->getActions().contains (showMenu));
                 expect (mix->getAccessibilityHandler()->getActions().contains (showMenu));
 
-                // What decides whether "has context menu" is spoken on focus.
+                // What the right bracket key opens.
                 expect (astralay::ui::findContextMenu (gain) == gainMenu);
                 expect (astralay::ui::findContextMenu (mix) == mixMenu);
                 expect (astralay::ui::findContextMenu (nullptr) == nullptr);
-
-                // The hint is for moving to a control, not for focus coming back to it from a menu.
-                astralay::ui::Announcer hintAnnouncer (ed);
-                astralay::ui::ContextMenuHint hint (hintAnnouncer);
-
-                hint.focusChanged (gain);
-                expect (hint.isPending());
-
-                hint.focusChanged (nullptr);
-                expect (! hint.isPending());
-
-                hint.focusChanged (gain);
-                expect (! hint.isPending());
-
-                hint.focusChanged (mix);
-                expect (hint.isPending());
-
-                hint.focusChanged (gain);
-                expect (hint.isPending());
             }
 
             // Pitch probability's menu chooses the pitch mode, a parameter of the tap.

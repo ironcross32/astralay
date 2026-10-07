@@ -254,11 +254,11 @@ Layered keystrokes:
 
 Context menus:
 - A control with a context menu opens it three ways: the ] key, a right-click, and the screen reader's show-menu action (VO+SHIFT+M in VoiceOver).
-- Moving focus to a control with a context menu announces "has context menu" after the screen reader has read the control. Help tags don't mention menus, and nothing says what a menu contains; users explore it themselves. In code this is `ContextMenuHint`, which finds the menu through `ContextMenuTarget`, so a new menu is announced without further work.
+- Most controls have a context menu, so nothing is announced on moving to one. Help tags don't mention menus, and nothing says what a menu contains; users explore it themselves.
 - Choosing an item announces it. The menu's current setting is ticked.
 - Output gain: "Clip at +18 dBFS", "Clip at 0 dBFS", "No clipping", setting the output clip.
 - Pitch probability: "Sweep", "Varispeed", setting the selected tap's pitch mode. This is a parameter, so choosing one is an undoable edit.
-- A macro's group: "Rename...", a "Modulations" submenu, and "Bipolar" (see Macros below). The menu belongs to the group, so it opens from both controls inside it, and "has context menu" is announced on both.
+- A macro's group: "Rename...", a "Modulations" submenu, and "Bipolar" (see Macros below). The menu belongs to the group, so it opens from both controls inside it.
 - In code, a control gains a menu by implementing `ContextMenuTarget` (`source/ui/ContextMenu.h`); sliders and groups take one through `setContextMenu`. A control without a menu of its own opens the menu of the nearest group around it that has one.
 
 Previous and next group controls don't actually place focus on the group itself, but the first control inside said group. They move between the five top-level groups only, and wrap around, as should using the TAB key. TAB is not constrained by grouping, and navigates the interface in a flat manner.

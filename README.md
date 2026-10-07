@@ -44,6 +44,7 @@ Controls are arranged in five groups: Main, Tap *number*, Macros, Global, and Pe
 | Type a value | Enter | Return |
 | Accept a typed value | Enter | Return |
 | Cancel typing a value | Escape | Escape |
+| Put back the preset name, in its field | Escape | Escape |
 | Undo | Ctrl+Z | Cmd+Z |
 | Redo | Ctrl+Shift+Z | Cmd+Shift+Z |
 | Save a preset | Ctrl+S | Cmd+S |
@@ -154,7 +155,13 @@ Every control has a help tag, a short description that screen readers read after
 
 ## Presets
 
-User presets are saved in `Documents/Astralay/Presets` on both Windows and macOS. Access factory presets by pressing "Load", then expanding the "Factory presets" entry.
+The **Preset name** field in Main holds the name Save uses. A new instance starts with a randomly chosen name, such as "hollow-lantern". Type over it to use your own, or activate **Randomize** for another random one. Escape puts back the name the field had when you moved to it. Typing or randomizing a name can't be undone and doesn't count as a change to the preset. When the sound has changed since the preset was loaded or saved, the field's name reads "Preset name, modified".
+
+**Save** writes the preset under that name, with no dialog. If a preset of that name already exists it is replaced without asking, and Astralay says "Replaced" rather than "Saved". To keep the original and save a variation, change the name first. Characters that file names can't hold are left out of the name, and an empty name is refused.
+
+**Load** opens a menu with a **Factory presets** submenu, a **User presets** submenu listing your presets alphabetically, and **Open presets folder**. The User presets submenu only appears once you have saved a preset. The preset the name field names is ticked. Loading a preset puts its name in the field, except for the factory preset Init, which gets a new random name.
+
+User presets are saved in `Documents/Astralay/Presets` on both Windows and macOS, and that folder is the only place they are loaded from; folders inside it are ignored. A preset's name is its file's name, so use Open presets folder to rename or delete presets, or to add ones you've been given.
 
 ## MIDI
 
@@ -271,6 +278,10 @@ cmake --build build --config Release --parallel
 ```
 
 Even then nothing is written until the `ASTRALAY_LOG` environment variable is set to any value before the host starts. Each instance of the plugin then writes its own file to `Documents/Astralay/Logs`, named with the date and time. The top of each file explains its lines. Logs grow by several megabytes a minute while audio is playing, so unset the variable when you're done.
+
+## Credits
+
+Random preset names are made from the [EFF Large Wordlist for Passphrases](https://www.eff.org/dice) by the Electronic Frontier Foundation, used under a [Creative Commons Attribution licence](https://www.eff.org/copyright). The four entries that contain a hyphen are left out.
 
 ## Licence
 

@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "state/Macros.h"
+#include "state/Presets.h"
 #include "ui/AccessibilitySettings.h"
 #include "ui/AccessibleGroup.h"
 #include "ui/Announcer.h"
@@ -173,9 +174,12 @@ private:
 
     void undo();
     void redo();
-    void showSaveDialog();
+    void savePreset();
+
+    /** Opens the Load menu: the factory presets, the user presets if there are any, and an item
+        that opens the user preset folder. The preset the name field names is ticked.
+    */
     void showLoadMenu();
-    void showLoadDialog();
 
     /** Opens the context menu of the focused control, or of the nearest control around it that
         has one. Returns false if there is none.
@@ -242,8 +246,11 @@ private:
 
     // Main
     astralay::ui::MenuControl<juce::TextButton> mainMenuButton { "Main menu" }, midiLearnButton { "MIDI learn" },
-        undoButton { "Undo" }, redoButton { "Redo" }, saveButton { "Save" }, loadButton { "Load" };
-    astralay::ui::MenuControl<juce::Label> presetName;
+        undoButton { "Undo" }, redoButton { "Redo" }, randomizeButton { "Randomize" }, saveButton { "Save" },
+        loadButton { "Load" };
+    juce::Label presetLabel, modifiedLabel;
+    astralay::ui::NameField presetName { astralay::state::Presets::maxNameLength };
+    juce::String shownPresetName;   // The processor's preset name as the field last showed it.
 
     // Tap
     juce::Label tapSelectorLabel;
@@ -278,8 +285,7 @@ private:
     astralay::ui::Announcer announcer { *this };
     astralay::ui::KeyLayer keyLayer { announcer };
 
-    std::unique_ptr<juce::FileChooser> fileChooser;
-    static constexpr int fromFileItemId = 10000;
+    static constexpr int firstUserPresetItemId = 10000, openPresetFolderItemId = 9999;
 
     std::unique_ptr<juce::ParameterAttachment> syncWatcher, freezeWatcher, tapeStopWatcher;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> enabledWatchers;

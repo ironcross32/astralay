@@ -40,6 +40,22 @@ namespace
         return path;
     }
 
+    /** The preset name field, whose title also says whether the preset is modified. */
+    juce::TextEditor* presetNameField (juce::Component& editor)
+    {
+        for (auto* c : tabOrder (editor))
+            if (auto* field = dynamic_cast<juce::TextEditor*> (c); field != nullptr && titleOf (*c).startsWith ("Preset name"))
+                return field;
+
+        return nullptr;
+    }
+
+    juce::String presetNameIn (juce::Component& editor)
+    {
+        auto* field = presetNameField (editor);
+        return field != nullptr ? field->getText() : juce::String();
+    }
+
     float valueOf (AstralayProcessor& processor, const juce::String& id)
     {
         return processor.getState().getRawParameterValue (id)->load();
@@ -70,14 +86,15 @@ public:
             for (auto* c : stops)
                 titles.add (titleOf (*c));
 
-            // Main 7, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
+            // Main 8, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
             // each of the 8 macros, global 19, performance 1.
-            expectEquals ((int) stops.size(), 83);
+            expectEquals ((int) stops.size(), 84);
 
-            if (stops.size() != 83)
+            if (stops.size() != 84)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
-            const juce::StringArray expectedStart { "Main menu", "MIDI learn", "Undo", "Redo", "Save", "Load", "Preset: Init",
+            const juce::StringArray expectedStart { "Main menu", "MIDI learn", "Undo", "Redo",
+                                                    "Preset name", "Randomize", "Save", "Load",
                                                     "Selected tap", "Tap 1 Enabled", "Tap 1 Time",
                                                     "Tap 1 Volume", "Tap 1 Pan", "Tap 1 Feedback",
                                                     "Tap 1 Low Cut", "Tap 1 High Cut",
@@ -98,7 +115,69 @@ public:
             for (int i = 0; i < expectedEnd.size(); ++i)
                 expectEquals (titles[titles.size() - expectedEnd.size() + i], expectedEnd[i]);
 
-            expectEquals (titles.indexOf ("Tap 1 Bit Crusher Maximum Rate Reduction"), 47);
+            expectEquals (titles.indexOf ("Tap 1 Bit Crusher Maximum Rate Reduction"), 48);
+        }
+
+        beginTest ("The preset name field holds the name, takes typing and says when the preset is modified");
+        {
+            AstralayProcessor named;
+            std::unique_ptr<juce::AudioProcessorEditor> open (named.createEditor());
+            open->addToDesktop (juce::ComponentPeer::windowIsTemporary);
+
+            auto* field = presetNameField (*open);
+            expect (field != nullptr);
+
+            if (field != nullptr)
+            {
+                expectEquals (field->getText(), named.getPresetName());
+                expectEquals (titleOf (*field), juce::String ("Preset name"));
+
+                // The field reports its changes and keys through the message loop.
+                const auto dispatch = [] { juce::MessageManager::getInstance()->runDispatchLoopUntil (20); };
+
+                // Typing reaches the processor, and isn't a change to the sound.
+                field->setText ("Typed name", true);
+                dispatch();
+                expectEquals (named.getPresetName(), juce::String ("Typed name"));
+                expectEquals (titleOf (*field), juce::String ("Preset name"));
+                expect (! named.getHistory().canUndo());
+
+                // Escape puts back the name the field had when focus arrived.
+                field->focusGained (juce::Component::focusChangedByTabKey);
+                field->setText ("Mistake", true);
+                dispatch();
+                expectEquals (named.getPresetName(), juce::String ("Mistake"));
+                field->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
+                dispatch();
+                expectEquals (field->getText(), juce::String ("Typed name"));
+                expectEquals (named.getPresetName(), juce::String ("Typed name"));
+
+                // Enter leaves it alone.
+                field->keyPressed (juce::KeyPress (juce::KeyPress::returnKey));
+                dispatch();
+                expectEquals (named.getPresetName(), juce::String ("Typed name"));
+
+                if (auto* randomize = dynamic_cast<juce::Button*> (findByTitle (*open, "Randomize")))
+                {
+                    randomize->onClick();
+                    expect (named.getPresetName() != "Typed name");
+                    expectEquals (field->getText(), named.getPresetName());
+                }
+                else
+                {
+                    expect (false, "Randomize button missing");
+                }
+
+                auto* mix = named.getState().getParameter (global::mix);
+                mix->beginChangeGesture();
+                mix->setValueNotifyingHost (0.9f);
+                mix->endChangeGesture();
+                expectEquals (titleOf (*field), juce::String ("Preset name, modified"));
+
+                named.loadFactoryPreset (1);
+                expectEquals (field->getText(), astralay::state::Presets::factory()[1].name);
+                expectEquals (titleOf (*field), juce::String ("Preset name"));
+            }
         }
 
         beginTest ("Controls sit inside named groups for VoiceOver");
@@ -167,7 +246,7 @@ public:
             const auto dispatch = [] { juce::MessageManager::getInstance()->runDispatchLoopUntil (20); };
             const auto checkRestored = [&]
             {
-                expect (findByTitle (*openEditor, "Preset: Restored session") != nullptr, "Preset name stayed stale");
+                expectEquals (presetNameIn (*openEditor), juce::String ("Restored session"), "Preset name stayed stale");
                 expectEquals (restoredProcessor.getSelectedTap(), 5);
                 expect (findByTitle (*openEditor, "Tap 6 Enabled") != nullptr, "Tap controls stayed bound to the old tap");
                 auto* slider = dynamic_cast<astralay::ui::ParameterSlider*> (findByTitle (*openEditor, "Tap 6 Feedback"));
@@ -202,7 +281,7 @@ public:
             restoredProcessor.setStateInformation (saved.getData(), (int) saved.getSize());
             restoredProcessor.setStateInformation (latest.getData(), (int) latest.getSize());
             dispatch();
-            expect (findByTitle (*openEditor, "Preset: Latest session") != nullptr);
+            expectEquals (presetNameIn (*openEditor), juce::String ("Latest session"));
             expect (findByTitle (*openEditor, "Tap 10 Feedback") != nullptr);
             expectEquals (restoredProcessor.getSelectedTap(), 9);
 
@@ -211,7 +290,7 @@ public:
             savedProcessor.getStateInformation (latest);
             restoredProcessor.setStateInformation (latest.getData(), (int) latest.getSize());
             dispatch();
-            expect (findByTitle (*openEditor, "Preset: Same tap session") != nullptr);
+            expectEquals (presetNameIn (*openEditor), juce::String ("Same tap session"));
             expect (findByTitle (*openEditor, "Tap 10 Feedback") != nullptr);
 
             // Closing the editor before a queued refresh is delivered must be safe.

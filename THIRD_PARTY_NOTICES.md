@@ -8,6 +8,12 @@ Astralay includes the following third-party software. Their licences require the
 - Used for: the plugin framework, user interface and plugin formats.
 - Licence: used under the GNU Affero General Public License version 3 (AGPLv3), https://www.gnu.org/licenses/agpl-3.0.en.html (full text in LICENSE-AGPL-3.0.txt). Because of this, distributed builds of Astralay are covered by the AGPLv3; see the README.
 
+## EFF Large Wordlist for Passphrases
+
+- Source: https://www.eff.org/dice
+- Used for: the words random preset names are made from (`source/state/PresetWords.cpp`). The four entries that contain a hyphen are left out.
+- Licence: by the Electronic Frontier Foundation, used under a Creative Commons Attribution licence; see https://www.eff.org/copyright.
+
 ## PFFFT
 
 - Source: https://github.com/marton78/pffft

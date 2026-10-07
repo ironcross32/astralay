@@ -31,6 +31,21 @@ private:
     bool dismissed = false;
 };
 
+/** A text field that is always shown, for a name. Whatever is typed is kept as it is typed, with
+    onTextChange saying so. Enter does nothing, and Escape puts back the text the field had when
+    focus arrived and announces it.
+*/
+class NameField final : public HelpTagTooltip<juce::TextEditor>
+{
+public:
+    explicit NameField (int maxLength);
+
+    void focusGained (FocusChangeType) override;
+
+private:
+    juce::String textOnFocus;
+};
+
 /** The text for how far a macro moves a parameter: an amount in the parameter's own unit, such
     as "-200 ms", "25%" or "30 left".
 */

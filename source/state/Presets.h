@@ -23,8 +23,30 @@ namespace Presets
     constexpr int version = 1;
     inline constexpr auto fileExtension = ".astralay";
 
+    /** The most characters a preset name can have. */
+    constexpr int maxNameLength = 64;
+
     /** Documents/Astralay/Presets on Windows and macOS. Factory presets never live here. */
     juce::File userFolder();
+
+    /** The preset files in a folder, in alphabetical order ignoring case. A preset's name is its
+        file's name without the extension. Folders inside the folder are ignored.
+    */
+    juce::Array<juce::File> userPresets (const juce::File& folder);
+
+    /** A name as it can be used for a file: without surrounding spaces or the characters file
+        names can't hold. Empty if that leaves nothing usable.
+    */
+    juce::String legalName (const juce::String& typed);
+
+    /** The file a preset of this name is saved to. The name must be a legal one. */
+    juce::File fileFor (const juce::File& folder, const juce::String& name);
+
+    /** Two or three random words joined by hyphens, such as "hollow-lantern". */
+    juce::String randomName (juce::Random& random);
+
+    /** A random name that no preset in the folder has. */
+    juce::String unusedRandomName (const juce::File& folder, juce::Random& random);
 
     std::unique_ptr<juce::XmlElement> toXml (const juce::AudioProcessor& processor, const juce::String& name,
                                              const MacroSettings& macros = {});
@@ -44,6 +66,11 @@ namespace Presets
     };
 
     const std::vector<Factory>& factory();
+
+    /** The index of the factory preset that is the plugin's defaults. Loading it gives a random
+        name rather than its own, as a new instance has.
+    */
+    constexpr int initIndex = 0;
 
     History::Snapshot snapshotFor (const Factory& preset, const juce::AudioProcessor& processor);
 }

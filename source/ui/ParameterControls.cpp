@@ -106,6 +106,32 @@ TypeInField::TypeInField (const juce::String& title, const juce::String& help, c
     onFocusLost = [close] { close (false); };
 }
 
+//==============================================================================
+NameField::NameField (int maxLength)
+{
+    setFont (juce::FontOptions (sizes::textHeight));
+    setJustification (juce::Justification::centredLeft);
+    setSelectAllWhenFocused (true);
+    setInputRestrictions (maxLength);
+
+    onEscapeKey = [this]
+    {
+        if (getText() == textOnFocus)
+            return;
+
+        setText (textOnFocus, true);
+        selectAll();
+        announceFrom (*this, textOnFocus);
+    };
+}
+
+void NameField::focusGained (FocusChangeType cause)
+{
+    textOnFocus = getText();
+    HelpTagTooltip<juce::TextEditor>::focusGained (cause);
+}
+
+//==============================================================================
 std::unique_ptr<TypeInField> TypeInField::show (juce::Component& target, const juce::String& title,
                                                 const juce::String& help, const juce::String& text)
 {

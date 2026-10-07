@@ -13,9 +13,10 @@ juce::String helpFor (const juce::String& key)
         // Main
         { helpKeys::undo,       "Undoes the last change." },
         { helpKeys::redo,       "Redoes the last change that was undone." },
-        { helpKeys::save,       "Saves a preset." },
+        { helpKeys::save,       "Saves a preset under the name in the preset name field, replacing the one of that name if there is one." },
         { helpKeys::load,       "Loads a preset you made or one of the factory ones." },
-        { helpKeys::presetName, "The name of the current preset." },
+        { helpKeys::presetName, "The name Save uses. Type a new one to save a separate preset. Escape puts back the name it had." },
+        { helpKeys::randomize,  "Makes up a new preset name." },
 
         // Tap basics
         { helpKeys::tapSelector, "Selects a tap to work with; the remaining controls in this group all apply to the selected tap." },

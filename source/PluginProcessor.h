@@ -7,11 +7,13 @@
 #include "state/DiagnosticLog.h"
 #include "state/History.h"
 #include "state/MidiMappings.h"
+#include "state/Presets.h"
 
 class AstralayProcessor final : public juce::AudioProcessor
 {
 public:
-    explicit AstralayProcessor (juce::File midiFolder = astralay::state::MidiMappings::defaultFolder());
+    explicit AstralayProcessor (juce::File midiFolder = astralay::state::MidiMappings::defaultFolder(),
+                                juce::File presetFolder = astralay::state::Presets::userFolder());
     ~AstralayProcessor() override = default;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -59,15 +61,30 @@ public:
     /** The preferences shared by every instance, kept beside the MIDI mappings folder. */
     astralay::state::Settings& getSettings() noexcept { return *sharedSettings; }
 
-    /** The current preset's name, and whether its settings have changed since it was loaded or
-        saved. Both are saved with the session.
+    /** The preset name, which is whatever the name field holds: that of the preset last loaded or
+        saved until the user types another, and a random one to begin with. Also whether the
+        settings have changed since a preset was loaded or saved. Both are saved with the session.
     */
     juce::String getPresetName() const;
     bool isPresetModified() const;
 
-    /** Load or save presets as undoable steps. Each returns the text to announce. */
+    /** Takes a name as it is typed. Not undoable, and doesn't mark the preset modified. */
+    void setPresetName (const juce::String& name);
+
+    /** Gives the preset a random name that no user preset has, and returns it. Not undoable. */
+    juce::String randomisePresetName();
+
+    /** Where user presets are saved, and the only place they are loaded from. */
+    const juce::File& getPresetFolder() const noexcept { return presetFolder; }
+
+    /** Loads a preset as an undoable step. Each returns the text to announce. */
     juce::String loadFactoryPreset (int index);
     juce::String loadPresetFile (const juce::File& file);
+
+    /** Saves the settings as the user preset the name says, replacing it if there is one, and
+        returns the text to announce. An empty name, or one that can't be a file's, is refused.
+    */
+    juce::String savePreset();
     juce::String savePresetFile (const juce::File& file);
 
     /** Sets parameters, by ID and in normalised form, as one undoable step named description.
@@ -259,6 +276,8 @@ private:
     astralay::state::MidiMappings midiMappings;
     std::shared_ptr<astralay::state::Settings> sharedSettings {astralay::state::Settings::shared (midiMappings.settingsFile()) };
     std::atomic<bool> midiModified { false };
+    juce::File presetFolder;
+    juce::Random nameRandom;
     std::array<TapParameters, astralay::params::numTaps> tapParameters;
     GlobalParameters globalParameters;
 

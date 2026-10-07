@@ -87,6 +87,7 @@ target_sources(Astralay
         source/state/MidiSmoothing.cpp
         source/state/Macros.cpp
         source/state/Presets.cpp
+        source/state/PresetWords.cpp
         source/state/Settings.cpp
         source/ui/AccessibilitySettings.cpp
         source/ui/Announcer.cpp
@@ -167,6 +168,7 @@ if(ASTRALAY_BUILD_TESTS)
             source/state/MidiSmoothing.cpp
             source/state/Macros.cpp
             source/state/Presets.cpp
+            source/state/PresetWords.cpp
             source/state/Settings.cpp
             source/ui/AccessibilitySettings.cpp
             source/ui/Announcer.cpp

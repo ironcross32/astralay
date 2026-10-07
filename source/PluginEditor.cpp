@@ -245,26 +245,42 @@ void AstralayEditor::buildMainGroup()
     midiLearnButton.onClick = [this] { toggleMidiLearn(); };
     ui::describe (undoButton, "Undo", ui::helpFor (ui::helpKeys::undo));
     ui::describe (redoButton, "Redo", ui::helpFor (ui::helpKeys::redo));
+    ui::describe (presetName, "Preset name", ui::helpFor (ui::helpKeys::presetName));
+    ui::describe (randomizeButton, "Randomize", ui::helpFor (ui::helpKeys::randomize));
     ui::describe (saveButton, "Save", ui::helpFor (ui::helpKeys::save));
     ui::describe (loadButton, "Load", ui::helpFor (ui::helpKeys::load));
 
     undoButton.onClick = [this] { undo(); };
     redoButton.onClick = [this] { redo(); };
-    saveButton.onClick = [this] { showSaveDialog(); };
+    randomizeButton.onClick = [this] { announce (processor.randomisePresetName()); };
+    saveButton.onClick = [this] { savePreset(); };
     loadButton.onClick = [this] { showLoadMenu(); };
+    presetName.onTextChange = [this]
+    {
+        shownPresetName = presetName.getText();
+        processor.setPresetName (shownPresetName);
+    };
 
-    for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton, &saveButton, &loadButton })
+    for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton })
     {
         button->setWantsKeyboardFocus (true);
         mainGroup.addInOrder (*button);
     }
 
-    // Read-only, but focusable so Tab and group navigation can reach it.
-    refreshPresetName();
-    presetName.setTooltip (ui::helpFor (ui::helpKeys::presetName));
-    presetName.setWantsKeyboardFocus (true);
-    presetName.setJustificationType (juce::Justification::centredLeft);
+    setUpLabel (presetLabel, "Preset");
+    mainGroup.addAndMakeVisible (presetLabel);
     mainGroup.addInOrder (presetName);
+
+    for (auto* button : { &randomizeButton, &saveButton, &loadButton })
+    {
+        button->setWantsKeyboardFocus (true);
+        mainGroup.addInOrder (*button);
+    }
+
+    // For the eye. Screen readers get it from the name field's own name.
+    setUpLabel (modifiedLabel, "Modified");
+    mainGroup.addChildComponent (modifiedLabel);
+    refreshPresetName();
 }
 
 void AstralayEditor::buildTapGroup()
@@ -850,7 +866,7 @@ bool AstralayEditor::keyPressed (const juce::KeyPress& key)
 
     if (key == juce::KeyPress ('z', command, 0))         { undo();           return true; }
     if (key == juce::KeyPress ('z', command | shift, 0)) { redo();           return true; }
-    if (key == juce::KeyPress ('s', command, 0))         { showSaveDialog(); return true; }
+    if (key == juce::KeyPress ('s', command, 0))         { savePreset();     return true; }
     if (key == juce::KeyPress ('o', command, 0))         { showLoadMenu();   return true; }
 
     if (key == juce::KeyPress ('y', command, 0))
@@ -1076,76 +1092,63 @@ void AstralayEditor::redo()
     announce (processor.getHistory().redo());
 }
 
-void AstralayEditor::showSaveDialog()
+void AstralayEditor::savePreset()
 {
-    const auto folder = astralay::state::Presets::userFolder();
-    folder.createDirectory();
-
-    const auto suggestion = folder.getChildFile (juce::File::createLegalFileName (processor.getPresetName()))
-                                  .withFileExtension (astralay::state::Presets::fileExtension);
-
-    fileChooser = std::make_unique<juce::FileChooser> ("Save preset", suggestion,
-                                                       juce::String ("*") + astralay::state::Presets::fileExtension, true);
-
-    const auto chooserFlags = juce::FileBrowserComponent::saveMode
-                     | juce::FileBrowserComponent::canSelectFiles
-                     | juce::FileBrowserComponent::warnAboutOverwriting;
-
-    fileChooser->launchAsync (chooserFlags, [safeThis = SafePointer<AstralayEditor> (this)] (const juce::FileChooser& chooser)
-    {
-        const auto file = chooser.getResult();
-
-        if (safeThis == nullptr || file == juce::File())
-            return;
-
-        safeThis->announce (safeThis->processor.savePresetFile (file.withFileExtension (astralay::state::Presets::fileExtension)));
-    });
+    processor.getMidiMappings().cancelLearn();
+    announce (processor.savePreset());
 }
 
 void AstralayEditor::showLoadMenu()
 {
+    using namespace astralay::state;
+
     processor.getMidiMappings().cancelLearn();
+
+    // The tick is on the preset the name field names, which is the one Save would replace.
+    const auto current = Presets::legalName (processor.getPresetName());
+
     juce::PopupMenu factoryMenu;
-    const auto& factory = astralay::state::Presets::factory();
+    const auto& factory = Presets::factory();
 
     for (int i = 0; i < (int) factory.size(); ++i)
-        factoryMenu.addItem (i + 1, factory[(size_t) i].name);
+        factoryMenu.addItem (i + 1, factory[(size_t) i].name, true, factory[(size_t) i].name == current);
+
+    juce::PopupMenu userMenu;
+    const auto folder = processor.getPresetFolder();
+    const auto user = Presets::userPresets (folder);
+
+    for (int i = 0; i < user.size(); ++i)
+    {
+        const auto name = user[i].getFileNameWithoutExtension();
+        userMenu.addItem (firstUserPresetItemId + i, name, true, name.equalsIgnoreCase (current));
+    }
 
     juce::PopupMenu menu;
     menu.addSubMenu ("Factory presets", factoryMenu);
-    menu.addItem (fromFileItemId, "From file...");
 
-    showMenu (menu, loadButton, [safeThis = SafePointer<AstralayEditor> (this)] (int result)
+    if (! user.isEmpty())
+        menu.addSubMenu ("User presets", userMenu);
+
+    menu.addItem (openPresetFolderItemId, "Open presets folder");
+
+    showMenu (menu, loadButton, [safeThis = SafePointer<AstralayEditor> (this), folder, user] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
 
-        if (result == fromFileItemId)
-            safeThis->showLoadDialog();
+        if (result == openPresetFolderItemId)
+        {
+            if (! folder.createDirectory() || ! folder.startAsProcess())
+                safeThis->announce ("Could not open the presets folder");
+        }
+        else if (result >= firstUserPresetItemId)
+        {
+            safeThis->announce (safeThis->processor.loadPresetFile (user[result - firstUserPresetItemId]));
+        }
         else
+        {
             safeThis->announce (safeThis->processor.loadFactoryPreset (result - 1));
-    });
-}
-
-void AstralayEditor::showLoadDialog()
-{
-    processor.getMidiMappings().cancelLearn();
-    const auto folder = astralay::state::Presets::userFolder();
-    folder.createDirectory();
-
-    fileChooser = std::make_unique<juce::FileChooser> ("Load preset", folder,
-                                                       juce::String ("*") + astralay::state::Presets::fileExtension, true);
-
-    const auto chooserFlags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
-
-    fileChooser->launchAsync (chooserFlags, [safeThis = SafePointer<AstralayEditor> (this)] (const juce::FileChooser& chooser)
-    {
-        const auto file = chooser.getResult();
-
-        if (safeThis == nullptr || file == juce::File())
-            return;
-
-        safeThis->announce (safeThis->processor.loadPresetFile (file));
+        }
     });
 }
 
@@ -1216,13 +1219,18 @@ void AstralayEditor::showPitchModeMenu (juce::Component& target)
 
 void AstralayEditor::refreshPresetName()
 {
-    auto text = "Preset: " + processor.getPresetName();
+    const auto name = processor.getPresetName();
 
-    // A word rather than an asterisk, which screen readers often skip.
-    if (processor.isPresetModified())
-        text << ", modified";
+    // Only when the name has changed from the one last shown or typed. The field says what was
+    // typed a moment after it happens, and a refresh in between mustn't put the old name back.
+    if (std::exchange (shownPresetName, name) != name && presetName.getText() != name)
+        presetName.setText (name, false);
 
-    presetName.setText (text, juce::dontSendNotification);
+    // In the field's name, which screen readers always read, and as a word rather than an
+    // asterisk, which they often skip.
+    const auto modified = processor.isPresetModified();
+    presetName.setTitle (modified ? "Preset name, modified" : "Preset name");
+    modifiedLabel.setVisible (modified);
 }
 
 void AstralayEditor::valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier& property)
@@ -1377,13 +1385,23 @@ void AstralayEditor::resized()
     {
         auto row = mainGroup.getContentBounds();
 
-        for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton, &saveButton, &loadButton })
+        for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton })
         {
             button->setBounds (row.removeFromLeft (110));
             row.removeFromLeft (gap);
         }
 
-        presetName.setBounds (row.withTrimmedLeft (10));
+        presetLabel.setBounds (row.removeFromLeft (70).withTrimmedLeft (10));
+        presetName.setBounds (row.removeFromLeft (300));
+        row.removeFromLeft (gap);
+
+        for (auto* button : { &randomizeButton, &saveButton, &loadButton })
+        {
+            button->setBounds (row.removeFromLeft (110));
+            row.removeFromLeft (gap);
+        }
+
+        modifiedLabel.setBounds (row.withTrimmedLeft (10));
     }
 
     globalGroup.setBounds (area.removeFromRight (380));

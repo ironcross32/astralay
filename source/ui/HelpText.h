@@ -19,6 +19,7 @@ namespace helpKeys
     inline constexpr auto save = "ui_save";
     inline constexpr auto load = "ui_load";
     inline constexpr auto presetName = "ui_presetName";
+    inline constexpr auto randomize = "ui_randomize";
     inline constexpr auto tapSelector = "ui_tapSelector";
     inline constexpr auto performance = "ui_performance";
     inline constexpr auto macroArm = "ui_macroArm";

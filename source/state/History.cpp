@@ -170,10 +170,9 @@ void History::gestureEnded (int parameterIndex, float before, float after)
         onUserEdit();
 }
 
-History::Snapshot History::capture (const juce::String& presetName, bool modified) const
+History::Snapshot History::capture (bool modified) const
 {
     Snapshot snapshot;
-    snapshot.presetName = presetName;
     snapshot.modified = modified;
 
     for (auto* parameter : processor.getParameters())

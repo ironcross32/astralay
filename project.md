@@ -190,14 +190,21 @@ There are 8 macros. Each has a value and moves any number of other parameters by
 - Factory presets are defined in code (`source/state/Presets.cpp`) as settings that differ from the defaults, written as the text a user would type ("250 ms", "1/8 dotted"). The starter set: Init, Slapback, Ping pong, Rhythmic scatter, Frozen grains, Robot choir.
 - Preset files hold every parameter's value in its own units, keyed by parameter ID. Parameters the file doesn't contain take their defaults; parameters the plugin doesn't know are ignored. A loaded preset takes its name from the file name.
 - Preset files also hold the macro settings, in a `Macros` element: each macro's name, whether it is bipolar and its modulations (parameter ID and amount, in the parameter's unit). Macros left at their defaults are omitted, and a file without the element gives every macro its defaults, as do the factory presets. Loading a preset replaces the macro settings.
-- Saving, loading and errors are announced ("Saved My Preset", "Loaded Slapback", "Could not load ... It isn't an Astralay preset.").
-- User presets are stored in `%userprofile%\Documents\Astralay\Presets` on Windows and `~/Documents/Astralay/Presets` on macOS.
+- Saving, loading and errors are announced ("Saved My Preset", "Replaced My Preset", "Loaded Slapback", "Could not load ... It isn't an Astralay preset.").
+- User presets are stored in `%userprofile%\Documents\Astralay\Presets` on Windows and `~/Documents/Astralay/Presets` on macOS. That folder is the only place they are saved to and loaded from. Only its top level is read: folders inside it are ignored.
 - Preset files are XML with a version attribute and the extension `.astralay`. When loading a preset from an older version, any missing parameter takes its default value.
-- Save opens a native OS save dialog in the user preset folder, suggesting the current preset name.
-- Load opens a menu containing a "Factory presets" submenu and a "From file…" item, which opens a native OS open dialog in the user preset folder.
-- A new instance's preset name is "Init". When the current preset has been changed, the name label reads "<name>, modified" (a word rather than an asterisk, which screen readers often skip).
+- There are no file dialogs. The preset name is an editable text field, and it is the whole of what Save needs:
+    - What is typed is stored with the session as it is typed, so it survives closing the editor. Typing a name is not undoable and does not mark the preset modified. The field takes up to 64 characters. Enter does nothing; Escape puts back the name the field had when focus arrived, and announces it.
+    - A Randomize button replaces the name with a random one and announces it. This is not undoable either.
+    - Random names are two or three words, chosen at random each time, in lower case and joined by hyphens ("hollow-lantern"). The words are the EFF Large Wordlist for Passphrases, compiled into the binary (`source/state/PresetWords.cpp`) without its four hyphenated entries; the plugin makes no network connection. A random name is never that of an existing user preset.
+    - A new instance has a random name, as it holds the built-in defaults. So does loading the factory preset Init, which is announced by the new name ("Loaded hollow-lantern"). The other factory presets, and user presets, put their own name in the field. A restored session keeps the name it was saved with.
+- Save writes the preset named in the field to the user preset folder. An existing preset of that name is replaced without asking, announced as "Replaced" rather than "Saved"; there is no separate Save As, since changing the name first does that. Names that differ only in case are the same preset, which takes the case typed.
+- Before saving, the name loses surrounding spaces, the characters `\ / : * ? " < > |`, control characters, and dots at either end, and the field shows the result. An empty name is refused with "Enter a preset name". A name that leaves nothing usable, or that is one Windows keeps for devices (CON, NUL, COM1 and so on), is refused with "<name> can't be used as a preset name".
+- Load opens a menu containing a "Factory presets" submenu, a "User presets" submenu listing the user presets alphabetically ignoring case, and "Open presets folder", which opens the folder in the system's file manager, creating it first if need be. The User presets submenu is left out when there are no user presets. Files are not checked until one is chosen; one that isn't a preset is reported then.
+- In both submenus the preset whose name matches the field is ticked, ignoring case for user presets. For a user preset that is the one Save would replace.
+- When the settings have changed since a preset was loaded or saved, the name field's accessible name is "Preset name, modified" instead of "Preset name" (a word rather than an asterisk, which screen readers often skip, and in the name rather than the help tag, which can be turned off). A "Modified" label, hidden from screen readers, shows beside the buttons.
 - The host session state stores all parameters except the tape stop switch, plus the currently selected tap, the output clip setting and the macro settings. A session saved before there were macros restores them at their defaults.
-- Restoring host state with the editor open refreshes the preset label and rebinds the selected tap's controls. State-replacement notifications queue a refresh on the message thread, including when the host restores from another thread. Consecutive replacements display the latest state, and closing the editor cancels its pending refresh.
+- Restoring host state with the editor open refreshes the preset name field and rebinds the selected tap's controls. State-replacement notifications queue a refresh on the message thread, including when the host restores from another thread. Consecutive replacements display the latest state, and closing the editor cancels its pending refresh.
 
 ### Undo
 
@@ -205,7 +212,7 @@ There are 8 macros. Each has a value and moves any number of other parameters by
 - A run of changes to the same modulation less than 600 ms apart joins into one step. Macro steps are announced as "Undo modulation of Tap 1 Feedback by Macro 1", "Undo rename Macro 1" and "Undo Macro 1 bipolar" (or "unipolar").
 - One slider gesture is one undo step. A run of edits to the same parameter less than 600 ms apart (such as repeated arrow presses) joins into one step.
 - Only the user's edits are recorded, recognised by their change gestures; host automation never enters the undo history or marks the preset modified.
-- Undoing a preset load restores the previous values, preset name and modified state.
+- Undoing a preset load restores the previous values, preset name and modified state, and redoing it brings back the loaded preset's name. No other undo or redo step changes the name, so undoing an edit leaves a name typed since as it is.
 - Undo and redo announce what changed, for example "Undo Tap 3 Feedback, 40%". The history lives in the processor, so it survives closing the editor, and is cleared when the host restores a session.
 
 ## Automation
@@ -225,7 +232,7 @@ It is imperative to group controls based on their function. This is vital for pr
 
 There are five top-level groups, in this order:
 
-1. Main: Undo, Redo, Save, Load, then a read-only label showing the current preset name.
+1. Main: Main menu, MIDI learn, Undo, Redo, the Preset name field, Randomize, Save, Load.
 2. Tap group, named after the selected tap (for example "Tap 3"):
     - Tap selector, a dropdown whose items show each tap's state (for example "Tap 3, on")
     - Enabled

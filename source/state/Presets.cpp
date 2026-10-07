@@ -1,4 +1,5 @@
 ﻿#include "Presets.h"
+#include "PresetWords.h"
 #include "params/Parameters.h"
 
 namespace astralay::state::Presets
@@ -47,6 +48,78 @@ juce::File userFolder()
     return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
                .getChildFile ("Astralay")
                .getChildFile ("Presets");
+}
+
+juce::Array<juce::File> userPresets (const juce::File& folder)
+{
+    auto files = folder.findChildFiles (juce::File::findFiles | juce::File::ignoreHiddenFiles, false,
+                                        juce::String ("*") + fileExtension);
+
+    std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b)
+    {
+        return a.getFileNameWithoutExtension().compareIgnoreCase (b.getFileNameWithoutExtension()) < 0;
+    });
+
+    return files;
+}
+
+juce::String legalName (const juce::String& typed)
+{
+    auto name = typed.removeCharacters ("\\/:*?\"<>|");
+
+    for (int i = name.length(); --i >= 0;)
+        if (name[i] < ' ')
+            name = name.replaceSection (i, 1, {});
+
+    // Windows drops dots and spaces from the end of a file name, and a dot at the start hides the
+    // file on macOS.
+    name = name.trim();
+
+    while (name.startsWithChar ('.'))
+        name = name.substring (1).trimStart();
+
+    while (name.endsWithChar ('.'))
+        name = name.dropLastCharacters (1).trimEnd();
+
+    name = name.substring (0, maxNameLength).trimEnd();
+
+    // Windows keeps these for devices, whatever follows the first dot.
+    const auto device = name.upToFirstOccurrenceOf (".", false, false).trimEnd().toUpperCase();
+    const auto numbered = device.length() == 4 && (device.startsWith ("COM") || device.startsWith ("LPT"))
+                              && juce::CharacterFunctions::isDigit (device[3]);
+
+    if (numbered || device == "CON" || device == "PRN" || device == "AUX" || device == "NUL")
+        return {};
+
+    return name;
+}
+
+juce::File fileFor (const juce::File& folder, const juce::String& name)
+{
+    // Not withFileExtension, which would replace whatever follows a dot in the name.
+    return folder.getChildFile (name + fileExtension);
+}
+
+juce::String randomName (juce::Random& random)
+{
+    const auto words = presetWords();
+    juce::StringArray chosen;
+
+    for (int i = random.nextBool() ? 2 : 3; --i >= 0;)
+        chosen.add (words[(size_t) random.nextInt ((int) words.size())]);
+
+    return chosen.joinIntoString ("-");
+}
+
+juce::String unusedRandomName (const juce::File& folder, juce::Random& random)
+{
+    auto name = randomName (random);
+
+    // There are millions of names, so more than one go is all but unheard of.
+    for (int attempt = 0; attempt < 20 && fileFor (folder, name).existsAsFile(); ++attempt)
+        name = randomName (random);
+
+    return name;
 }
 
 std::unique_ptr<juce::XmlElement> toXml (const juce::AudioProcessor& processor, const juce::String& name,

@@ -24,13 +24,14 @@ class History final : private juce::AudioProcessorParameter::Listener
 public:
     /** Parameter values by ID, in normalised form, plus the macro settings, the preset name and
         the modified flag. A macro's value is normalised over the range that macro has in the
-        same snapshot.
+        same snapshot. Only the snapshots either side of a preset load hold a name: applying any
+        other leaves the name as it is, so that undoing an edit doesn't undo a name typed since.
     */
     struct Snapshot
     {
         std::map<juce::String, float> values;
         MacroSettings macros;
-        juce::String presetName;
+        std::optional<juce::String> presetName;
         bool modified = false;
     };
 
@@ -45,8 +46,10 @@ public:
     */
     std::function<void (const Snapshot&)> onSnapshotApplied;
 
-    /** The current parameter values. The owner fills in the macro settings. */
-    Snapshot capture (const juce::String& presetName, bool modified) const;
+    /** The current parameter values. The owner fills in the macro settings, and the preset name
+        if the snapshot is to hold one.
+    */
+    Snapshot capture (bool modified) const;
 
     /** Applies a snapshot and records it as one undoable step named description. With
         mergeWithPrevious, it joins the previous step instead if that was also recorded here and

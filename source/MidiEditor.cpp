@@ -98,8 +98,7 @@ void AstralayEditor::setupMidiControls()
     for (auto* toggle : { &tapEnabled, &syncToggle, &freezeToggle, &sustainToggle, &reproducibleToggle, &tapeStopToggle }) configure (*toggle);
     configure (placementChoice);
     configure (tapSelector);
-    configure (presetName);
-    for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton, &saveButton, &loadButton }) configure (*button);
+    for (auto* button : { &mainMenuButton, &midiLearnButton, &undoButton, &redoButton, &randomizeButton, &saveButton, &loadButton }) configure (*button);
     performancePad.setContextMenu ([this] { showControlMenu (performancePad); });
 }
 

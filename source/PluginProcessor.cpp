@@ -20,12 +20,13 @@ namespace
     }
 }
 
-AstralayProcessor::AstralayProcessor (juce::File midiFolder)
+AstralayProcessor::AstralayProcessor (juce::File midiFolder, juce::File presetFolderToUse)
     : AudioProcessor (BusesProperties()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       state (*this, nullptr, "Astralay", astralay::params::createLayout()),
-      midiMappings (state, history, std::move (midiFolder))
+      midiMappings (state, history, std::move (midiFolder)),
+      presetFolder (std::move (presetFolderToUse))
 {
     using namespace astralay::params;
 
@@ -131,7 +132,8 @@ AstralayProcessor::AstralayProcessor (juce::File midiFolder)
     pendingRoutes.reserve ((size_t) numMacros * modulatedValues.size());
     activeRoutes.reserve (pendingRoutes.capacity());
 
-    setPresetInfo ("Init", false);
+    // A session that is being restored replaces this with the name it was saved with.
+    setPresetInfo (astralay::state::Presets::unusedRandomName (presetFolder, nameRandom), false);
     midiMappings.onSoundChanged = [this]
     {
         if (midiModified.load())
@@ -151,7 +153,7 @@ AstralayProcessor::AstralayProcessor (juce::File midiFolder)
     history.onSnapshotApplied = [this] (const astralay::state::History::Snapshot& snapshot)
     {
         applyMacros (snapshot.macros);
-        setPresetInfo (snapshot.presetName, snapshot.modified);
+        setPresetInfo (snapshot.presetName.value_or (getPresetName()), snapshot.modified);
     };
 
    #if ASTRALAY_DIAGNOSTICS
@@ -179,9 +181,21 @@ void AstralayProcessor::setPresetInfo (const juce::String& name, bool modified)
     state.state.setProperty (presetModifiedProperty, modified, nullptr);
 }
 
+void AstralayProcessor::setPresetName (const juce::String& name)
+{
+    state.state.setProperty (presetNameProperty, name, nullptr);
+}
+
+juce::String AstralayProcessor::randomisePresetName()
+{
+    const auto name = astralay::state::Presets::unusedRandomName (presetFolder, nameRandom);
+    setPresetName (name);
+    return name;
+}
+
 astralay::state::History::Snapshot AstralayProcessor::captureSnapshot() const
 {
-    auto snapshot = history.capture (getPresetName(), isPresetModified());
+    auto snapshot = history.capture (isPresetModified());
     snapshot.macros = getMacros();
     return snapshot;
 }
@@ -189,10 +203,15 @@ astralay::state::History::Snapshot AstralayProcessor::captureSnapshot() const
 juce::String AstralayProcessor::applyPreset (const astralay::state::History::Snapshot& preset)
 {
     midiMappings.cancelSmoothing();
-    const auto before = captureSnapshot();
+
+    // With the name, so that undoing the load brings it back.
+    auto before = captureSnapshot();
+    before.presetName = getPresetName();
+
+    const auto name = preset.presetName.value_or (juce::String());
     lastModulationEdit.clear();
-    history.applyAndRecord (before, preset, "load preset " + preset.presetName);
-    return "Loaded " + preset.presetName;
+    history.applyAndRecord (before, preset, "load preset " + name);
+    return "Loaded " + name;
 }
 
 juce::String AstralayProcessor::loadFactoryPreset (int index)
@@ -203,7 +222,12 @@ juce::String AstralayProcessor::loadFactoryPreset (int index)
     if (! juce::isPositiveAndBelow (index, (int) presets.size()))
         return "No such preset";
 
-    return applyPreset (astralay::state::Presets::snapshotFor (presets[(size_t) index], *this));
+    auto preset = astralay::state::Presets::snapshotFor (presets[(size_t) index], *this);
+
+    if (index == astralay::state::Presets::initIndex)
+        preset.presetName = astralay::state::Presets::unusedRandomName (presetFolder, nameRandom);
+
+    return applyPreset (preset);
 }
 
 juce::String AstralayProcessor::loadPresetFile (const juce::File& file)
@@ -220,16 +244,41 @@ juce::String AstralayProcessor::loadPresetFile (const juce::File& file)
     return applyPreset (preset);
 }
 
+juce::String AstralayProcessor::savePreset()
+{
+    using namespace astralay::state;
+
+    const auto typed = getPresetName().trim();
+    const auto name = Presets::legalName (typed);
+
+    if (name.isEmpty())
+        return typed.isEmpty() ? juce::String ("Enter a preset name") : typed + " can't be used as a preset name";
+
+    const auto file = Presets::fileFor (presetFolder, name);
+
+    // A preset whose name differs only in case is the same one, and takes the case that was typed.
+    for (const auto& existing : Presets::userPresets (presetFolder))
+    {
+        const auto existingName = existing.getFileNameWithoutExtension();
+
+        if (existingName != name && existingName.equalsIgnoreCase (name))
+            existing.moveFileTo (file);
+    }
+
+    return savePresetFile (file);
+}
+
 juce::String AstralayProcessor::savePresetFile (const juce::File& file)
 {
     const auto name = file.getFileNameWithoutExtension();
     const auto xml = astralay::state::Presets::toXml (*this, name, getMacros());
+    const auto replacing = file.existsAsFile();
 
     if (! file.getParentDirectory().createDirectory() || ! xml->writeTo (file))
         return "Could not save " + file.getFileName();
 
     setPresetInfo (name, false);
-    return "Saved " + name;
+    return (replacing ? "Replaced " : "Saved ") + name;
 }
 
 void AstralayProcessor::applyEdit (const std::map<juce::String, float>& values, const juce::String& description,

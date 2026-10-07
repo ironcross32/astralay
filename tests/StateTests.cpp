@@ -99,7 +99,6 @@ public:
         beginTest ("An edit marks the preset modified");
         {
             AstralayProcessor processor;
-            expectEquals (processor.getPresetName(), juce::String ("Init"));
             expect (! processor.isPresetModified());
 
             edit (parameter (processor, global::mix), 70.0f);
@@ -126,6 +125,7 @@ public:
         beginTest ("Loading a factory preset is one undoable step that restores the old name");
         {
             AstralayProcessor processor;
+            const auto original = processor.getPresetName();
             auto& time = parameter (processor, tapId (0, tap::time));
             edit (parameter (processor, global::mix), 70.0f);
 
@@ -140,10 +140,172 @@ public:
             expectWithinAbsoluteError (plain (parameter (processor, global::mix)), 30.0f, 0.01f);
 
             processor.getHistory().undo();
-            expectEquals (processor.getPresetName(), juce::String ("Init"));
+            expectEquals (processor.getPresetName(), original);
             expect (processor.isPresetModified());
             expectWithinAbsoluteError (plain (time), 500.0f, 0.01f);
             expectWithinAbsoluteError (plain (parameter (processor, global::mix)), 70.0f, 0.01f);
+
+            processor.getHistory().redo();
+            expectEquals (processor.getPresetName(), juce::String ("Slapback"));
+        }
+
+        beginTest ("A random name is two or three lower case words joined by hyphens");
+        {
+            juce::Random random (1234);
+            bool two = false, three = false;
+
+            for (int i = 0; i < 200; ++i)
+            {
+                const auto made = state::Presets::randomName (random);
+                const auto words = juce::StringArray::fromTokens (made, "-", {});
+
+                two = two || words.size() == 2;
+                three = three || words.size() == 3;
+                expect (words.size() == 2 || words.size() == 3, made);
+                expect (made.containsOnly ("abcdefghijklmnopqrstuvwxyz-") && ! words.contains (juce::String()), made);
+                expectEquals (state::Presets::legalName (made), made);
+            }
+
+            expect (two && three);
+        }
+
+        beginTest ("A new instance and the Init preset get random names; other factory presets keep theirs");
+        {
+            AstralayProcessor processor;
+            const auto first = processor.getPresetName();
+            expect (juce::StringArray::fromTokens (first, "-", {}).size() >= 2, first);
+            expect (! processor.isPresetModified());
+
+            const auto announced = processor.loadFactoryPreset (state::Presets::initIndex);
+            const auto second = processor.getPresetName();
+            expect (second != "Init" && second != first, second);
+            expectEquals (announced, "Loaded " + second);
+
+            processor.loadFactoryPreset (1);
+            expectEquals (processor.getPresetName(), state::Presets::factory()[1].name);
+
+            // A session keeps the name it was saved with.
+            processor.setPresetName ("Kept by the session");
+            juce::MemoryBlock saved;
+            processor.getStateInformation (saved);
+
+            AstralayProcessor other;
+            other.setStateInformation (saved.getData(), (int) saved.getSize());
+            expectEquals (other.getPresetName(), juce::String ("Kept by the session"));
+        }
+
+        beginTest ("A typed or random name isn't an undo step, and only undoing a load changes the name");
+        {
+            AstralayProcessor processor;
+            processor.setPresetName ("Typed");
+            expect (! processor.getHistory().canUndo());
+            expect (! processor.isPresetModified());
+
+            const auto random = processor.randomisePresetName();
+            expectEquals (processor.getPresetName(), random);
+            expect (! processor.getHistory().canUndo());
+            expect (! processor.isPresetModified());
+
+            // Undoing and redoing edits, of either kind, leaves a name typed since alone.
+            edit (parameter (processor, global::mix), 70.0f);
+            processor.renameMacro (0, "Sweep");
+            processor.setPresetName ("Typed later");
+
+            processor.getHistory().undo();
+            processor.getHistory().undo();
+            expectEquals (processor.getPresetName(), juce::String ("Typed later"));
+            processor.getHistory().redo();
+            processor.getHistory().redo();
+            expectEquals (processor.getPresetName(), juce::String ("Typed later"));
+
+            // Undoing a load brings back the name there was when it was loaded.
+            processor.loadFactoryPreset (1);
+            processor.setPresetName ("My slapback");
+            processor.getHistory().undo();
+            expectEquals (processor.getPresetName(), juce::String ("Typed later"));
+        }
+
+        beginTest ("Names are made legal for files");
+        {
+            using state::Presets::legalName;
+
+            expectEquals (legalName ("  My preset  "), juce::String ("My preset"));
+            expectEquals (legalName ("a/b\\c:d*e?f\"g<h>i|j"), juce::String ("abcdefghij"));
+            expectEquals (legalName ("...hidden. ."), juce::String ("hidden"));
+            expectEquals (legalName ("Version 1.5"), juce::String ("Version 1.5"));
+            expectEquals (legalName ("Cafe #2, wet & dry"), juce::String ("Cafe #2, wet & dry"));
+            expectEquals (legalName (juce::String::repeatedString ("x", 100)).length(), state::Presets::maxNameLength);
+
+            for (const auto* refused : { "", "   ", "???", "CON", "nul", "com1", "LPT9.old", ". ." })
+                expect (legalName (refused).isEmpty(), refused);
+
+            expectEquals (legalName ("Console"), juce::String ("Console"));
+            expectEquals (legalName ("COM10"), juce::String ("COM10"));
+        }
+
+        beginTest ("Save writes the named preset to the user folder, replacing one of the same name");
+        {
+            const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                  .getNonexistentChildFile ("AstralayPresetTests", "", false);
+            const auto folder = root.getChildFile ("Presets");
+            const auto names = [&]
+            {
+                juce::StringArray found;
+
+                for (const auto& file : state::Presets::userPresets (folder))
+                    found.add (file.getFileNameWithoutExtension());
+
+                return found.joinIntoString ("|");
+            };
+
+            {
+                AstralayProcessor processor (root.getChildFile ("MIDI Mappings"), folder);
+                expect (state::Presets::userPresets (folder).isEmpty());
+
+                processor.setPresetName ("  ");
+                expectEquals (processor.savePreset(), juce::String ("Enter a preset name"));
+                processor.setPresetName ("CON");
+                expectEquals (processor.savePreset(), juce::String ("CON can't be used as a preset name"));
+                expect (! folder.exists());
+
+                processor.setPresetName ("zebra");
+                edit (parameter (processor, global::mix), 70.0f);
+                expectEquals (processor.savePreset(), juce::String ("Saved zebra"));
+                expect (! processor.isPresetModified());
+
+                edit (parameter (processor, global::mix), 80.0f);
+                expectEquals (processor.savePreset(), juce::String ("Replaced zebra"));
+                expectEquals (names(), juce::String ("zebra"));
+
+                // A changed name is a new preset, with the characters a file can't have left out.
+                processor.setPresetName (" Apple: pie? ");
+                edit (parameter (processor, global::mix), 90.0f);
+                expectEquals (processor.savePreset(), juce::String ("Saved Apple pie"));
+                expectEquals (processor.getPresetName(), juce::String ("Apple pie"));
+                expectEquals (names(), juce::String ("Apple pie|zebra"));
+
+                // Only the case differs, so it is the same preset under the name as typed.
+                processor.setPresetName ("ZEBRA");
+                expectEquals (processor.savePreset(), juce::String ("Replaced ZEBRA"));
+                expectEquals (names(), juce::String ("Apple pie|ZEBRA"));
+
+                // Folders inside the folder, and other files, aren't presets.
+                expect (folder.getChildFile ("Pads").createDirectory());
+                expect (folder.getChildFile ("Pads").getChildFile ("inner.astralay").replaceWithText ("<AstralayPreset/>"));
+                expect (folder.getChildFile ("notes.txt").replaceWithText ("x"));
+                expectEquals (names(), juce::String ("Apple pie|ZEBRA"));
+
+                // A random name is never one that is taken.
+                for (int i = 0; i < 50; ++i)
+                    expect (! state::Presets::fileFor (folder, processor.randomisePresetName()).existsAsFile());
+            }
+
+            AstralayProcessor other (root.getChildFile ("MIDI Mappings"), folder);
+            expectEquals (other.loadPresetFile (state::Presets::fileFor (folder, "Apple pie")), juce::String ("Loaded Apple pie"));
+            expectWithinAbsoluteError (plain (parameter (other, global::mix)), 90.0f, 0.01f);
+            expectEquals (other.getPresetName(), juce::String ("Apple pie"));
+
+            expect (root.deleteRecursively());
         }
 
         beginTest ("Saving and loading a preset file restores every value and the name");
@@ -156,6 +318,7 @@ public:
             edit (parameter (processor, global::sync), 1.0f);
             edit (parameter (processor, global::freezeSustain), 1.0f);
 
+            file.deleteFile();
             expectEquals (processor.savePresetFile (file), juce::String ("Saved Astralay test preset"));
             expect (! processor.isPresetModified());
 
@@ -235,11 +398,12 @@ public:
         beginTest ("Something that isn't a preset is refused");
         {
             AstralayProcessor processor;
+            const auto original = processor.getPresetName();
             const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("not a preset.astralay");
             file.replaceWithText ("<SomethingElse/>");
 
             expect (processor.loadPresetFile (file).startsWith ("Could not load"));
-            expectEquals (processor.getPresetName(), juce::String ("Init"));
+            expectEquals (processor.getPresetName(), original);
             file.deleteFile();
         }
 

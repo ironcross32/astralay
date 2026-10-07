@@ -69,7 +69,7 @@ When a tap's time changes while audio is playing (automation, tempo change, user
     - Feedback path (default): glitches apply only to the signal fed back into the delay line, so the first repeat is clean and glitches are not heard at 0% feedback.
     - Output and feedback: glitches apply to the delayed signal before it splits to the tap's output and its feedback, so they are heard from the first repeat even at 0% feedback.
 - Audio is divided into chunks of the global buffer size. When host sync is on, the chunk grid is aligned to the host's bar and beat position; otherwise it is free-running from when the plugin started processing.
-- At each chunk boundary, each glitch type on each enabled tap rolls to fire. Its chance is the tap's probability for that glitch multiplied by the global glitch threshold. A global threshold of 0% disables all glitching.
+- At each chunk boundary, each glitch type on each enabled tap rolls to fire. Its chance is the tap's probability for that glitch.
 - A glitch that fires runs for a random number of chunks between the global minimum and maximum glitch length.
 - A glitch ends on a chunk boundary, so the same type can fire again there. With host sync on, a chunk is rarely a whole number of samples, so at each boundary a running glitch's remaining time is set back to a whole number of chunks, and one with none left ends. Counted out in rounded samples instead, a glitch outlasted its last boundary by a fraction of a sample at tempos where the chunk rounds up, and a glitch at 100% ran as little as half the time. A glitch more than 8 samples off the grid (the chunk size or tempo changed while it ran) is left to run out and fade as it was going to.
 - Multiple glitches can trigger and run simultaneously, up to the global maximum simultaneous glitches per tap. A glitch type that is already running on a tap doesn't retrigger.
@@ -138,7 +138,6 @@ Timing:
     - Accepted by ear on 2026-10-04 as a first pass. The user heard some level increases followed by losses, rather than continuing growth to dangerous levels, and accepted those fluctuations. Sustain preserves audible material; it does not hold the output at a fixed level.
 
 Glitch engine:
-- Glitch threshold: 0% to 100%, default 20%.
 - Glitch placement: "Feedback path" or "Output and feedback", default "Feedback path".
 - Buffer size: 10 ms to 2 s, default 125 ms. When synced: 1/64 to 4 bars, default 1/16.
 - Maximum simultaneous glitches: 1 to 4 per tap, default 2.
@@ -164,7 +163,7 @@ There are 8 macros. Each has a value and moves any number of other parameters by
 - A modulation is one parameter a macro moves, with an amount in that parameter's own unit: milliseconds for a time, decibels for a volume, percent for a feedback, and so on. The macro's value times the amount is added to the parameter's value, so an amount of 200 ms makes a time 200 ms longer when the macro is at 1, wherever the time is set. The amount can be up to the width of the parameter's range either way: -4999 ms to 4999 ms for a time of 1 ms to 5 s, 200 left to 200 right for a pan. Bit depths move by whole bits. The result is held within the parameter's range.
 - Host sync, as Surge XT does it: a time (a tap's time, a stutter's shortest and longest slice) has one modulation, which holds whether or not host sync is on. While it is on, the note value that takes the time's place moves by the same share of its own range as the amount is of the time's range, and lands on the nearest note value; there is no modulating by part of a note value. The note-value parameters can't be given modulations of their own. Several macros can move one parameter; their contributions add up. An amount of 0 is no modulation, and setting one to 0 removes it.
 - Modulation is applied in the processor once per audio block, to the value the engine reads. The parameter itself, its slider and what the host sees don't move.
-- A macro can move every parameter that has a slider, except the glitch engine's (threshold, buffer size, maximum simultaneous glitches, glitch lengths, seed), the output gain and the macros' own values. On/off parameters and the two choices (glitch placement, pitch mode) can't be moved.
+- A macro can move every parameter that has a slider, except the glitch engine's (buffer size, maximum simultaneous glitches, glitch lengths, seed), the output gain and the macros' own values. On/off parameters and the two choices (glitch placement, pitch mode) can't be moved.
 - The names, modes and modulations are not parameters. They are saved with the host session and in presets, and changing them is undoable.
 
 ## Presets and state
@@ -222,7 +221,7 @@ There are five top-level groups, in this order:
 3. Macros, with one nested sub-group for each of the 8 macros, named after the macro (see below). Inside each: the Arm button, then the value slider.
 4. Global, with three nested sub-groups:
     - Timing: host sync, glide time, freeze, freeze sustain
-    - Glitch engine: glitch threshold, glitch placement, buffer size, maximum simultaneous glitches, minimum glitch length, maximum glitch length, reproducible randomness, seed
+    - Glitch engine: glitch placement, buffer size, maximum simultaneous glitches, minimum glitch length, maximum glitch length, reproducible randomness, seed
     - Output: smear amount, smear size, mix, output gain (whose context menu sets the output clip)
 5. Performance: a single control, the performance area (see below).
 
@@ -335,5 +334,9 @@ It acts on a selection of taps, which is separate from the selected tap and has 
 - LEFT and RIGHT lower and raise the smear size by 10 ms; with SHIFT they lower and raise the smear amount by 5%. Both stop at their limits. Nothing is announced. One press is one undo step, and the repeats of a held key join into that step.
 - F freezes while it is held and releases when it is let go or focus leaves. If freeze was already on, releasing F turns it off. It is not announced and adds no undo step, but is sent to the host as one gesture so it can be recorded as automation.
 - SHIFT+F switches freeze on or off, announcing "Freeze on" or "Freeze off".
+- G stops the glitches on every tap, whatever the selection, while it is held, and lets them start again when it is let go or focus leaves. No glitch starts, and those running fade out over 5 ms; glitched audio already in a feedback loop stays there. If the glitches were already switched off, releasing G switches them back on. It is not announced.
+- SHIFT+G switches the glitches off or on, announcing "Glitches off" or "Glitches on".
 
-Visually it is a row of 16 numbered cells, filled when selected and dimmed when the tap is off, with a freeze indicator beside them. Clicking a cell adds or removes that tap.
+The glitch stop is not a parameter: it can't be automated or undone, lasts as long as the plugin instance, and is not saved with the session or in presets. The random sequence keeps running while it is on, so reproducible randomness carries on from where it would have been.
+
+Visually it is a row of 16 numbered cells, filled when selected and dimmed when the tap is off, with freeze and glitch indicators beside them. Clicking a cell adds or removes that tap.

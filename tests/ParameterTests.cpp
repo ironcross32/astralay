@@ -119,7 +119,7 @@ public:
             const auto& parameters = host.getParameters();
 
             constexpr int perTap = 44;
-            constexpr int global = 17;
+            constexpr int global = 16;
             expectEquals (parameters.size(), params::numTaps * perTap + global + params::numMacros);
 
             std::set<juce::String> ids;
@@ -155,13 +155,12 @@ public:
             expectWithinAbsoluteError (value (params::tapId (0, params::tap::time)), 500.0f, 1.0e-3f);
             expectEquals (choice (params::tapId (0, params::tap::timeSync)), juce::String ("1/4"));
             expectWithinAbsoluteError (value (params::tapId (0, params::tap::feedback)), 40.0f, 1.0e-3f);
-            expectWithinAbsoluteError (value (params::global::threshold), 20.0f, 1.0e-3f);
             expectWithinAbsoluteError (value (params::global::outputGain), -3.0f, 1.0e-3f);
             expectWithinAbsoluteError (value (params::global::smearAmount), 10.0f, 1.0e-3f);
             expectWithinAbsoluteError (value (params::global::smearSize), 200.0f, 1.0e-3f);
             expectEquals (value (params::global::freezeSustain), 0.0f);
             expectEquals (host.state.getParameter (params::global::freezeSustain)->getParameterIndex(), host.getParameters().size() - 1);
-            expectEquals (host.state.getParameter (params::macroId (0))->getParameterIndex(), params::numTaps * 44 + 16);
+            expectEquals (host.state.getParameter (params::macroId (0))->getParameterIndex(), params::numTaps * 44 + 15);
             expectEquals (choice (params::global::bufferSync), juce::String ("1/16"));
             expectEquals (choice (params::global::placement), juce::String ("Feedback path"));
 

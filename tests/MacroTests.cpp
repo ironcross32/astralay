@@ -82,7 +82,6 @@ public:
             expect (canModulate (global::smearSize));
 
             expect (! canModulate (global::outputGain));
-            expect (! canModulate (global::threshold));
             expect (! canModulate (global::bufferSize));
             expect (! canModulate (global::seed));
             expect (! canModulate (global::sync));
@@ -395,7 +394,7 @@ public:
 
             // The output gain, the glitch engine and the macros' own values stay as they are.
             expect (findByTitle (ed, "Output Gain") != nullptr);
-            expect (findByTitle (ed, "Glitch Threshold") != nullptr);
+            expect (findByTitle (ed, "Buffer Size") != nullptr);
             expect (findByTitle (ed, "Macro 2 value") != nullptr);
 
             if (feedback != nullptr)

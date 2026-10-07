@@ -337,8 +337,6 @@ void AstralayEditor::buildGlobalGroup()
     addToggle (timingGroup, timingItems, freezeToggle, freeze);
     addToggle (timingGroup, timingItems, sustainToggle, freezeSustain);
 
-    addSliderRow (engineGroup, engineItems, "Threshold", threshold, nullptr, false);
-
     setUpLabel (placementLabel, "Placement");
     engineGroup.addAndMakeVisible (placementLabel);
     placementChoice.bind (*state.getParameter (placement), placement);
@@ -369,6 +367,15 @@ void AstralayEditor::buildPerformanceGroup()
     performancePad.onStepSmear = [this] (bool amount, int direction, bool continuing) { processor.stepSmear (amount, direction, continuing); };
     performancePad.onHoldFreeze = [this] (bool held) { holdFreeze (held); };
     performancePad.onToggleFreeze = [this] { toggleAndAnnounce (params::global::freeze, "Freeze"); };
+
+    performancePad.setGlitchesStopped (processor.areGlitchesStopped());
+    performancePad.onHoldGlitchStop = [this] (bool held) { stopGlitches (held); };
+    performancePad.onToggleGlitchStop = [this]
+    {
+        const auto stopped = ! processor.areGlitchesStopped();
+        stopGlitches (stopped);
+        announce (stopped ? "Glitches off" : "Glitches on");
+    };
 
     performanceGroup.addInOrder (performancePad);
 }
@@ -996,6 +1003,12 @@ void AstralayEditor::holdFreeze (bool held)
         freeze->setValueNotifyingHost (0.0f);
         freeze->endChangeGesture();
     }
+}
+
+void AstralayEditor::stopGlitches (bool stopped)
+{
+    processor.setGlitchesStopped (stopped);
+    performancePad.setGlitchesStopped (stopped);
 }
 
 bool AstralayEditor::handleClipboardKey (const juce::KeyPress& key)

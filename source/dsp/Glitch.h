@@ -67,7 +67,7 @@ struct TapGlitchSettings
 /** Block-rate glitch settings shared by all taps. */
 struct GlitchGlobalSettings
 {
-    float threshold = 0.2f;             // 0 to 1, scales every probability.
+    bool stopped = false;               // No glitch starts, and any that are running fade out.
     bool outputAndFeedback = false;     // Otherwise glitches apply to the feedback path only.
     int chunkSamples = 6000;
     int maxSimultaneous = 2;

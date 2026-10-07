@@ -139,6 +139,14 @@ void GlitchChain::setSettings (const TapGlitchSettings& tapSettings, const Glitc
 {
     settings = tapSettings;
     global = globalSettings;
+
+    if (! global.stopped)
+        return;
+
+    // Cut each running glitch down to its fade-out, or to as much of one as it has faded in.
+    for (auto& slot : slots)
+        if (slot.active)
+            slot.length = juce::jmin (slot.length, slot.elapsed + juce::jmin (slot.fade, slot.elapsed));
 }
 
 int GlitchChain::getNumActive() const noexcept
@@ -187,10 +195,10 @@ void GlitchChain::onChunkBoundary()
         // Always draw, so the random sequence doesn't depend on which glitches are running.
         const auto roll = random.nextFloat();
 
-        if (slots[(size_t) i].active || getNumActive() >= global.maxSimultaneous)
+        if (global.stopped || slots[(size_t) i].active || getNumActive() >= global.maxSimultaneous)
             continue;
 
-        if (roll < settings.probability[(size_t) i] * global.threshold)
+        if (roll < settings.probability[(size_t) i])
             start (type);
     }
 }

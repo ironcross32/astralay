@@ -200,7 +200,6 @@ public:
             settings.delaySamples = 1500.5f;
             settings.feedback = 0.0f;
             GlitchGlobalSettings global;
-            global.threshold = 0.0f;
             tap.setSettings (settings, 0.0f, global);
             for (int n = 0; n < 17000; ++n)
             {

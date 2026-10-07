@@ -98,6 +98,12 @@ public:
 
     static constexpr juce::uint32 allTapsSelected = (1u << astralay::params::numTaps) - 1;
 
+    /** While set, no glitch starts on any tap and those running fade out. Set from the performance
+        area; lasts as long as this instance and isn't saved.
+    */
+    bool areGlitchesStopped() const noexcept { return glitchesStopped.load(); }
+    void setGlitchesStopped (bool shouldBeStopped) noexcept { glitchesStopped.store (shouldBeStopped); }
+
     /** The factor one performance step scales a tap's time by. */
     static constexpr float performanceTimeStep = 1.1f;
 
@@ -193,7 +199,6 @@ private:
         std::atomic<float>* smearAmount = nullptr;
         std::atomic<float>* smearSize = nullptr;
 
-        std::atomic<float>* threshold = nullptr;
         std::atomic<float>* placement = nullptr;
         std::atomic<float>* bufferSize = nullptr;
         std::atomic<float>* bufferSync = nullptr;
@@ -279,6 +284,7 @@ private:
     juce::String copiedSuffix;
     std::map<juce::String, float> copiedValues;   // Normalised, by parameter suffix.
     juce::uint32 performanceSelection = allTapsSelected;
+    std::atomic<bool> glitchesStopped { false };
 
    #if ASTRALAY_DIAGNOSTICS
     // Last, so its thread stops before anything it reads is destroyed.

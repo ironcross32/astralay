@@ -182,8 +182,7 @@ namespace
                           makeBool (freeze, "Freeze", false));
 
         auto engine = makeGroup ("glitchEngine", "Glitch engine");
-        engine->addChild (f (threshold, "Glitch Threshold", linear (0.0f, 100.0f), 20.0f),
-                          std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { placement, 1 }, "Glitch Placement",
+        engine->addChild (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { placement, 1 }, "Glitch Placement",
                                                                         juce::StringArray { "Feedback path", "Output and feedback" }, 0),
                           f (bufferSize, "Buffer Size", skewed (10.0f, 2000.0f, 250.0f), 125.0f),
                           makeNoteChoice (bufferSync, "Synced Buffer Size", NoteValues::labels(), "1/16"),
@@ -322,7 +321,6 @@ Unit unitFor (const juce::String& id)
         { tap::crushRateMax, Unit::multiplier },
 
         { global::glide,       Unit::milliseconds },
-        { global::threshold,   Unit::percent },
         { global::bufferSize,  Unit::milliseconds },
         { global::lengthMin,   Unit::chunks },
         { global::lengthMax,   Unit::chunks },

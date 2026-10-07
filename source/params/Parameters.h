@@ -77,7 +77,6 @@ namespace global
     inline constexpr auto glide        = "glide";
     inline constexpr auto freeze       = "freeze";
     inline constexpr auto freezeSustain = "freezeSustain";
-    inline constexpr auto threshold    = "threshold";
     inline constexpr auto placement    = "glitchPlacement";
     inline constexpr auto bufferSize   = "bufferSize";
     inline constexpr auto bufferSync   = "bufferSync";

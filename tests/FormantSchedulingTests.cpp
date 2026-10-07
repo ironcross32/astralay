@@ -63,7 +63,6 @@ public:
             engine.prepare (48000.0, 64, 0.1);
             GlobalSettings g;
             g.reproducible = true;
-            g.glitch.threshold = 1.0f;
             g.glitch.chunkSamples = 480;
             g.glitch.lengthChunks = { 1, 1 };
             engine.setGlobalSettings (g);
@@ -103,7 +102,6 @@ public:
                 g.reproducible = true;
                 g.seed = 42;
                 g.glideSeconds = 0;
-                g.glitch.threshold = 1;
                 g.glitch.chunkSamples = 480;
                 g.glitch.lengthChunks = { 1, 3 };
                 g.glitch.outputAndFeedback = true;

@@ -72,9 +72,9 @@ public:
 
             // Main 7, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
             // each of the 8 macros, global 16, performance 1.
-            expectEquals ((int) stops.size(), 81);
+            expectEquals ((int) stops.size(), 80);
 
-            if (stops.size() != 81)
+            if (stops.size() != 80)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
             const juce::StringArray expectedStart { "Main menu", "MIDI learn", "Undo", "Redo", "Save", "Load", "Preset: Init",
@@ -88,7 +88,7 @@ public:
                 expectEquals (titles[i], expectedStart[i]);
 
             const juce::StringArray expectedEnd { "Host Sync", "Glide Time", "Freeze", "Freeze Sustain",
-                                                  "Glitch Threshold", "Glitch Placement", "Buffer Size",
+                                                  "Glitch Placement", "Buffer Size",
                                                   "Maximum Simultaneous Glitches", "Minimum Glitch Length",
                                                   "Maximum Glitch Length", "Reproducible Randomness", "Seed",
                                                   "Smear Amount", "Smear Size", "Mix", "Output Gain",
@@ -687,6 +687,27 @@ public:
                 expect (valueOf (processor, global::freeze) >= 0.5f);
                 release();
                 expect (valueOf (processor, global::freeze) < 0.5f);
+
+                // G stops the glitches while held; from a latched stop it ends with them back on.
+                pad->keyPressed (juce::KeyPress ('g'));
+                expect (processor.areGlitchesStopped());
+                release();
+                expect (! processor.areGlitchesStopped());
+
+                pad->keyPressed (juce::KeyPress ('g', shift, 'G'));
+                release();
+                expect (processor.areGlitchesStopped());
+
+                pad->keyPressed (juce::KeyPress ('g'));
+                expect (processor.areGlitchesStopped());
+                release();
+                expect (! processor.areGlitchesStopped());
+
+                pad->keyPressed (juce::KeyPress ('g', shift, 'G'));
+                release();
+                pad->keyPressed (juce::KeyPress ('g', shift, 'G'));
+                release();
+                expect (! processor.areGlitchesStopped());
 
                 // The selection outlives the editor window.
                 pad->keyPressed (juce::KeyPress ('4'));

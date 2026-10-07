@@ -98,7 +98,6 @@ AstralayProcessor::AstralayProcessor (juce::File midiFolder)
     globalParameters.smearAmount = get (global::smearAmount);
     globalParameters.smearSize  = get (global::smearSize);
 
-    globalParameters.threshold    = get (global::threshold);
     globalParameters.placement    = get (global::placement);
     globalParameters.bufferSize   = get (global::bufferSize);
     globalParameters.bufferSync   = get (global::bufferSync);
@@ -632,7 +631,7 @@ void AstralayProcessor::updateEngineSettings (int sampleOffset)
     g.clipCeiling = params::outputClipCeiling (outputClip.load());
     g.smearAmount = load (globalParameters.smearAmount) / 100.0f;
     g.smearSeconds = load (globalParameters.smearSize) / 1000.0f;
-    g.glitch.threshold = load (globalParameters.threshold) / 100.0f;
+    g.glitch.stopped = glitchesStopped.load();
     g.glitch.outputAndFeedback = (int) load (globalParameters.placement) == (int) params::GlitchPlacement::outputAndFeedback;
     g.glitch.chunkSamples = juce::jmax (1, (int) std::llround (juce::jmin (chunkSamples, params::maxDelaySeconds * sampleRate)));
     g.glitch.maxSimultaneous = (int) load (globalParameters.maxGlitches);

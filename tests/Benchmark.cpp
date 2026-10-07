@@ -19,7 +19,6 @@ namespace
         engine.prepare (rate, block, 10.0);
 
         GlobalSettings global;
-        global.glitch.threshold = glitching ? 1.0f : 0.0f;
         global.glitch.outputAndFeedback = true;
         global.glitch.chunkSamples = 6000;
         global.glitch.maxSimultaneous = 4;

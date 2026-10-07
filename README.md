@@ -15,7 +15,7 @@ Astralay is a multi-tap delay and glitch generator, built to be fully usable wit
     - ring modulation
     - frequency modulation
     - bit crusher
-- A shared glitch grid, which can follow the host's tempo, with a global threshold, glitch lengths, and a limit on how many glitches run at once.
+- A shared glitch grid, which can follow the host's tempo, with shared glitch lengths and a limit on how many glitches run at once.
 - Formant glitches briefly keep the original signal while preparing, then fade in over 5 ms. Preparation takes up to about 6 ms at common sample rates, spreading processing work to reduce CPU spikes. Very short formant glitches can sound weaker.
 - Reproducible randomness: playback starts restart the glitch sequence from your seed. Seeks and loop wraps also restart it when the host supplies sample positions. A host that skips stopped callbacks must report a position jump or prepare the plugin again for a restart to be detected.
 - Host sync, tape-style glide when times change, freeze, smear (diffusion), dry/wet mix, output gain and an output clip.
@@ -124,8 +124,12 @@ The Performance group holds a single control, the performance area. While it has
 | Lower or raise the smear amount by 5% | Shift+Left or Shift+Right arrow |
 | Freeze while held | F |
 | Switch freeze on or off | Shift+F |
+| Stop all glitches while held | G |
+| Switch all glitches off or on | Shift+G |
 
-The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move. The arrows and the held freeze are not announced.
+The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move. The arrows, the held freeze and the held glitch stop are not announced.
+
+Stopping the glitches affects every tap, whatever the selection. New glitches don't start and running ones fade out quickly, but glitched audio already going round a feedback loop stays in it. Pressing G after switching the glitches off with Shift+G switches them back on when you let go. The glitch stop can't be automated and isn't saved with your project.
 
 ### Help tags
 

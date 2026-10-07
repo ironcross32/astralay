@@ -159,6 +159,7 @@ private:
     /** Switches a bool parameter as an undoable edit and announces "<name> on" or "<name> off". */
     void toggleAndAnnounce (const char* parameterId, const juce::String& name);
     void holdFreeze (bool held);
+    void stopGlitches (bool stopped);
 
     /** Handles copy and paste for the focused control. Returns false if the key isn't one of
         those or focus isn't on the tap selector, the tap's on/off toggle or a per-tap slider.

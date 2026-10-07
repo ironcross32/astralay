@@ -12,7 +12,7 @@ namespace
     constexpr juce::uint32 oddTaps = 0x55555555u & allTaps;   // Taps 1, 3, 5 and so on.
     constexpr juce::uint32 evenTaps = allTaps & ~oddTaps;
 
-    constexpr int freezeWidth = 150;
+    constexpr int statusWidth = 150;
     constexpr int cellGap = 4;
 }
 
@@ -65,6 +65,12 @@ void PerformancePad::setTapEnabled (int tapIndex, bool enabled)
 void PerformancePad::setFrozen (bool shouldBeFrozen)
 {
     frozen = shouldBeFrozen;
+    repaint();
+}
+
+void PerformancePad::setGlitchesStopped (bool shouldBeStopped)
+{
+    glitchesStopped = shouldBeStopped;
     repaint();
 }
 
@@ -167,6 +173,30 @@ bool PerformancePad::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
+    if (code == 'G' || code == 'g')
+    {
+        if (heldGlitchKey != 0)
+            return true;
+
+        heldGlitchKey = code;
+        startTimerHz (30);
+
+        if (mods.isShiftDown())
+        {
+            if (onToggleGlitchStop != nullptr)
+                onToggleGlitchStop();
+        }
+        else
+        {
+            holdingGlitchStop = true;
+
+            if (onHoldGlitchStop != nullptr)
+                onHoldGlitchStop (true);
+        }
+
+        return true;
+    }
+
     return false;
 }
 
@@ -188,20 +218,37 @@ void PerformancePad::updateHeldKeys()
         heldArrow = 0;
 
     if (heldFreezeKey != 0 && ! juce::KeyPress::isKeyCurrentlyDown (heldFreezeKey))
-        releaseHeldKeys();
+        releaseFreezeKey();
 
-    if (heldArrow == 0 && heldFreezeKey == 0)
+    if (heldGlitchKey != 0 && ! juce::KeyPress::isKeyCurrentlyDown (heldGlitchKey))
+        releaseGlitchKey();
+
+    if (heldArrow == 0 && heldFreezeKey == 0 && heldGlitchKey == 0)
         stopTimer();
+}
+
+void PerformancePad::releaseFreezeKey()
+{
+    heldFreezeKey = 0;
+
+    if (std::exchange (holdingFreeze, false) && onHoldFreeze != nullptr)
+        onHoldFreeze (false);
+}
+
+void PerformancePad::releaseGlitchKey()
+{
+    heldGlitchKey = 0;
+
+    if (std::exchange (holdingGlitchStop, false) && onHoldGlitchStop != nullptr)
+        onHoldGlitchStop (false);
 }
 
 void PerformancePad::releaseHeldKeys()
 {
     heldArrow = 0;
-    heldFreezeKey = 0;
     stopTimer();
-
-    if (std::exchange (holdingFreeze, false) && onHoldFreeze != nullptr)
-        onHoldFreeze (false);
+    releaseFreezeKey();
+    releaseGlitchKey();
 }
 
 void PerformancePad::focusLost (FocusChangeType)
@@ -212,7 +259,7 @@ void PerformancePad::focusLost (FocusChangeType)
 //==============================================================================
 juce::Rectangle<int> PerformancePad::cellArea() const
 {
-    return getLocalBounds().withTrimmedRight (freezeWidth);
+    return getLocalBounds().withTrimmedRight (statusWidth);
 }
 
 void PerformancePad::mouseDown (const juce::MouseEvent& event)
@@ -255,9 +302,14 @@ void PerformancePad::paint (juce::Graphics& g)
         g.drawText (juce::String (t + 1), cell, juce::Justification::centred);
     }
 
+    auto status = getLocalBounds().removeFromRight (statusWidth);
+
     g.setColour (frozen ? colours::accent : colours::dimText);
-    g.drawText (frozen ? "Freeze: on" : "Freeze: off", getLocalBounds().removeFromRight (freezeWidth),
+    g.drawText (frozen ? "Freeze: on" : "Freeze: off", status.removeFromTop (status.getHeight() / 2),
                 juce::Justification::centred);
+
+    g.setColour (glitchesStopped ? colours::accent : colours::dimText);
+    g.drawText (glitchesStopped ? "Glitches: off" : "Glitches: on", status, juce::Justification::centred);
 }
 
 std::unique_ptr<juce::AccessibilityHandler> PerformancePad::createAccessibilityHandler()

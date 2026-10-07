@@ -25,7 +25,6 @@ public:
             global.mix = 1.0f;
             global.freeze = true;
             global.clipCeiling = 1.0f;
-            global.glitch.threshold = 1.0f;
             global.glitch.chunkSamples = 2400;
             engine.setGlobalSettings (global);
 

@@ -95,7 +95,6 @@ namespace
                               bool sustain = false, bool outputAndFeedback = false, int maxGlitches = 2)
     {
         auto global = wetOnly();
-        global.glitch.threshold = 1.0f;
         global.glitch.chunkSamples = 6000;
         global.reproducible = true;
         global.seed = seed;
@@ -328,7 +327,6 @@ public:
             for (const bool up : { false, true })
             {
                 auto global = wetOnly();
-                global.glitch.threshold = 1.0f;
                 global.glitch.chunkSamples = 6000;
                 global.glitch.lengthChunks = { 1.0f, 1.0f };
 
@@ -387,7 +385,6 @@ public:
             for (const auto& types : cases)
             {
                 auto global = wetOnly();
-                global.glitch.threshold = 1.0f;
                 global.glitch.chunkSamples = 6000;
                 global.reproducible = true;
                 global.seed = 3;
@@ -675,7 +672,6 @@ public:
 
             // The same grains at 95% feedback, with noise coming in throughout.
             auto global = wetOnly();
-            global.glitch.threshold = 1.0f;
             global.glitch.chunkSamples = 6000;
             global.reproducible = true;
             global.seed = 3;
@@ -776,7 +772,6 @@ public:
                     transport.samplesPerQuarter = samplesPerQuarter;
 
                     auto global = wetOnly();
-                    global.glitch.threshold = 1.0f;
                     global.glitch.chunkSamples = (int) std::llround (transport.chunkQuarters * samplesPerQuarter);
                     global.glitch.lengthChunks = { length, length };
 
@@ -1020,7 +1015,6 @@ public:
             {
                 auto global = wetOnly();
                 global.glideSeconds = 0.1f;
-                global.glitch.threshold = 1.0f;
                 global.glitch.chunkSamples = 4800;
                 global.glitch.lengthChunks = { 2.0f, 6.0f };
                 global.reproducible = true;

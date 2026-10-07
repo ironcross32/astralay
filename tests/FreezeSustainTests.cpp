@@ -92,7 +92,6 @@ public:
                 settings.glitch.bits = { 1.0f, 1.0f };
                 settings.glitch.probability[(size_t) GlitchType::bitCrusher] = 1.0f;
                 GlitchGlobalSettings global;
-                global.threshold = 1.0f;
                 global.chunkSamples = 256;
                 tap.setSettings (settings, 0.0f, global);
                 tap.reset();
@@ -165,7 +164,6 @@ public:
             settings.feedback = 0.0f;
             settings.glitch.bits = { 1.0f, 1.0f };
             GlitchGlobalSettings global;
-            global.threshold = 1.0f;
             global.chunkSamples = 256;
             global.outputAndFeedback = true;
             tap.setSettings (settings, 0.1f, global);

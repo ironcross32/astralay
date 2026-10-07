@@ -67,7 +67,6 @@ namespace
         chain.prepare (rate);
 
         GlitchGlobalSettings global;
-        global.threshold = 1.0f;
         global.maxSimultaneous = 4;
         global.chunkSamples = lengthSamples;
         global.lengthChunks = { 1.0f, 1.0f };
@@ -126,7 +125,6 @@ namespace
         run.global.glideSeconds = 0.0f;
         run.global.mix = 1.0f;
         run.global.outputGain = 1.0f;
-        run.global.glitch.threshold = 1.0f;
         run.global.glitch.outputAndFeedback = true;
         run.global.glitch.chunkSamples = 2400;
         run.global.glitch.maxSimultaneous = 2;
@@ -179,17 +177,6 @@ public:
     void runTest() override
     {
         const auto input = noise (48000, 7);
-
-        beginTest ("A threshold of 0% stops all glitching");
-        {
-            auto quiet = glitchyRun();
-            quiet.global.glitch.threshold = 0.0f;
-
-            auto none = glitchyRun();
-            none.tap.glitch.probability.fill (0.0f);
-
-            expect (runEngine (quiet, input) == runEngine (none, input));
-        }
 
         beginTest ("Feedback-path glitches leave the first repeat clean at 0% feedback");
         {
@@ -312,7 +299,6 @@ public:
                 set (global::reproducible, 1.0f);
                 set (global::seed, 42.0f);
                 set (global::sync, 0.0f);
-                set (global::threshold, 100.0f);
                 set (global::placement, 1.0f);
                 set (global::bufferSize, 50.0f);
                 set (global::mix, 100.0f);
@@ -368,7 +354,6 @@ public:
             chain.prepare (rate);
 
             GlitchGlobalSettings global;
-            global.threshold = 1.0f;
             global.maxSimultaneous = 2;
             global.chunkSamples = 1000;
             global.lengthChunks = { 4.0f, 4.0f };
@@ -382,6 +367,54 @@ public:
                 chain.process (input[(size_t) i]);
                 expect (chain.getNumActive() <= 2);
             }
+        }
+
+        beginTest ("Stopping the glitches starts none and fades out those running");
+        {
+            auto stopped = glitchyRun();
+            stopped.global.glitch.stopped = true;
+
+            auto none = glitchyRun();
+            none.tap.glitch.probability.fill (0.0f);
+
+            expect (runEngine (stopped, input) == runEngine (none, input));
+
+            GlitchChain chain;
+            chain.prepare (rate);
+
+            GlitchGlobalSettings global;
+            global.chunkSamples = 4800;
+            global.lengthChunks = { 4.0f, 4.0f };
+            chain.setSettings ({}, global);
+            chain.startForTesting (GlitchType::ringModulation);
+
+            for (int i = 0; i < 1000; ++i)
+                chain.process (input[(size_t) i]);
+
+            expectEquals (chain.getNumActive(), 1);
+
+            // Gone within the 5 ms fade, without a jump.
+            global.stopped = true;
+            chain.setSettings ({}, global);
+
+            const auto fade = (int) (0.005 * rate);
+            auto previous = chain.process (0.5f);
+            auto smooth = true;
+
+            for (int i = 1; i <= fade; ++i)
+            {
+                const auto y = chain.process (0.5f);
+                smooth &= std::abs (y - previous) < 0.2f;
+                previous = y;
+            }
+
+            expect (smooth);
+            expectEquals (chain.getNumActive(), 0);
+            expectEquals (chain.process (0.5f), 0.5f);
+
+            chain.setSettings (allAtMaximum(), global);
+            chain.onChunkBoundary();
+            expectEquals (chain.getNumActive(), 0);
         }
 
         beginTest ("Reverse plays each segment backwards");

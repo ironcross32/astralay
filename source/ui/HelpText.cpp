@@ -80,7 +80,6 @@ juce::String helpFor (const juce::String& key)
         { global::freezeSustain, "While frozen, restores some saved loop audio when glitches wear the repeats down. Off by default. Turning it on during a freeze saves what remains." },
 
         // Global: glitch engine
-        { global::threshold,    "Scales every glitch probability on every tap. At 0% nothing glitches." },
         { global::placement,    "Feedback path glitches only what is fed back, so the first repeat is clean. Output and feedback glitches what you hear from the first repeat." },
         { global::bufferSize,   "The length of a chunk. Glitches can start at each chunk and last a whole number of chunks." },
         { global::bufferSync,   "The length of a chunk as a note value. Glitches can start at each chunk and last a whole number of chunks." },

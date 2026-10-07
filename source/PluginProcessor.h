@@ -11,7 +11,7 @@
 class AstralayProcessor final : public juce::AudioProcessor
 {
 public:
-    AstralayProcessor();
+    explicit AstralayProcessor (juce::File midiFolder = astralay::state::MidiMappings::defaultFolder());
     ~AstralayProcessor() override = default;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -245,7 +245,7 @@ private:
 
     juce::AudioProcessorValueTreeState state;
     astralay::state::History history { *this };
-    astralay::state::MidiMappings midiMappings { state, history };
+    astralay::state::MidiMappings midiMappings;
     std::atomic<bool> midiModified { false };
     std::array<TapParameters, astralay::params::numTaps> tapParameters;
     GlobalParameters globalParameters;

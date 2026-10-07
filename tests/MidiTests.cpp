@@ -23,7 +23,9 @@ public:
     void runTest() override
     {
         using namespace params;
-        AstralayProcessor p;
+        testFolder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+            .getNonexistentChildFile ("AstralayMidiSuite", "", false).getChildFile ("MIDI Mappings");
+        AstralayProcessor p (testFolder);
         auto& midi = p.getMidiMappings();
         midi.clear();
         p.getHistory().clear();
@@ -150,7 +152,7 @@ public:
         juce::MemoryBlock block;
         midi.learn (global::glide);
         p.getStateInformation (block);
-        AstralayProcessor restored;
+        AstralayProcessor restored (testFolder);
         restored.setStateInformation (block.getData(), (int) block.getSize());
         expect (restored.getMidiMappings().current().bindings == midi.current().bindings);
         expect (restored.getMidiMappings().current().dirty);
@@ -183,6 +185,235 @@ public:
         files (p);
         timing();
         editor();
+        smoothing();
+        expect (testFolder.getParentDirectory().deleteRecursively());
+    }
+
+    void smoothing()
+    {
+        using namespace params;
+        using Mode = state::MidiSmoothing::Mode;
+        const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory)
+            .getNonexistentChildFile ("AstralaySmoothingTests", "", false);
+        const auto folder = root.getChildFile ("MIDI Mappings");
+        const auto settings = root.getChildFile ("Settings.json");
+        {
+            AstralayProcessor p (folder), other (folder);
+            auto& midi = p.getMidiMappings();
+            auto* mix = p.getState().getParameter (global::mix);
+            midi.bind (global::mix, { 1, 7 });
+            const auto event = [&] (int value) { midi.process (juce::MidiMessage::controllerEvent (1, 7, value)); };
+            const auto advance = [&] (int samples)
+            {
+                while (samples > 0)
+                {
+                    const auto count = juce::jmin (samples, midi.samplesUntilSmoothingUpdate());
+                    midi.advanceSmoothing (count);
+                    samples -= count;
+                }
+            };
+
+            beginTest ("Shared preference, fixed menu labels, persistence independent of mapping/project");
+            expect (midi.smoothingMode() == Mode::off);
+            expect (midi.setSmoothingMode (Mode::linearFast).wasOk());
+            expect (other.getMidiMappings().smoothingMode() == Mode::linearFast);
+            expectEquals (state::MidiSmoothing::label (Mode::linearFast), juce::String ("Linear Fast"));
+            expectEquals (state::MidiSmoothing::label (Mode::exponentialSlow), juce::String ("Exponential Slow"));
+            expectEquals (juce::JSON::parse (settings)["midiSmoothing"].toString(), juce::String ("linearFast"));
+            expect (! midi.serialise (midi.current()).contains ("Smoothing"));
+            expect (! midi.projectState()->toString().contains ("Smoothing"));
+
+            beginTest ("Linear duration and halfway value at multiple sample rates; duplicate events do not restart");
+            for (const auto rate : { 44100.0, 48000.0, 96000.0 })
+            {
+                midi.prepare (rate);
+                mix->setValueNotifyingHost (0);
+                event (127);
+                expectEquals (mix->getValue(), 0.0f);
+                const auto duration = (int) std::round (rate * 0.020);
+                advance (duration / 2);
+                // Updates are bounded to approximately 1 ms, even at non-integer-ms sample rates.
+                expectWithinAbsoluteError (mix->getValue(), 0.5f, 0.051f);
+                event (127);
+                advance (duration - duration / 2);
+                expectEquals (mix->getValue(), 1.0f);
+            }
+            midi.prepare (48000);
+
+            beginTest ("Linear retarget starts from current value; slow is 80 ms");
+            mix->setValueNotifyingHost (0);
+            event (127);
+            advance (480);
+            event (0);
+            advance (480);
+            expectWithinAbsoluteError (mix->getValue(), 0.25f, 0.00001f);
+            advance (480);
+            expectEquals (mix->getValue(), 0.0f);
+            expect (midi.setSmoothingMode (Mode::linearSlow).wasOk());
+            event (127);
+            advance (1920);
+            expectWithinAbsoluteError (mix->getValue(), 0.5f, 0.00001f);
+            advance (1920);
+            expectEquals (mix->getValue(), 1.0f);
+
+            beginTest ("Changing speed preserves current value and uses the new duration");
+            expect (midi.setSmoothingMode (Mode::linearFast).wasOk());
+            mix->setValueNotifyingHost (0);
+            event (127);
+            advance (480);
+            expect (midi.setSmoothingMode (Mode::linearSlow).wasOk());
+            midi.refreshSmoothing();
+            expectWithinAbsoluteError (mix->getValue(), 0.5f, 0.00001f);
+            advance (1920);
+            expectWithinAbsoluteError (mix->getValue(), 0.75f, 0.00001f);
+            advance (1920);
+            expectEquals (mix->getValue(), 1.0f);
+
+            beginTest ("Exponential closes 99 percent in selected time and settles at exact endpoints");
+            for (const auto mode : { Mode::exponentialFast, Mode::exponentialSlow })
+            {
+                expect (midi.setSmoothingMode (mode).wasOk());
+                mix->setValueNotifyingHost (0);
+                event (127);
+                const auto duration = (int) std::round (48000 * state::MidiSmoothing::seconds (mode));
+                advance (duration / 2);
+                expectWithinAbsoluteError (mix->getValue(), 0.9f, 0.00001f);
+                event (127);
+                advance (duration / 2);
+                expectWithinAbsoluteError (mix->getValue(), 0.99f, 0.00001f);
+                advance (duration * 3);
+                expectEquals (mix->getValue(), 1.0f);
+                event (0);
+                advance (duration * 4);
+                expectEquals (mix->getValue(), 0.0f);
+            }
+
+            beginTest ("Mouse/automation edit cancels pending movement; next MIDI event resumes");
+            expect (midi.setSmoothingMode (Mode::linearFast).wasOk());
+            event (127);
+            advance (240);
+            mix->setValueNotifyingHost (0.3f);
+            advance (1920);
+            expectWithinAbsoluteError (mix->getValue(), 0.3f, 0.00001f);
+            event (127);
+            advance (480);
+            expectWithinAbsoluteError (mix->getValue(), 0.65f, 0.00001f);
+            expect (other.getMidiMappings().setSmoothingMode (Mode::off).wasOk());
+            midi.refreshSmoothing();
+            expectEquals (mix->getValue(), 1.0f);
+
+            beginTest ("Pitch bend fan-out smooths macros and skewed parameters in normalized space");
+            expect (midi.setSmoothingMode (Mode::linearFast).wasOk());
+            const auto cutoffId = tapId (0, tap::highCut);
+            for (const auto& id : { juce::String (global::outputGain), macroId (0), cutoffId })
+            {
+                midi.bind (id, { 1, -1 });
+                p.getState().getParameter (id)->setValueNotifyingHost (0);
+            }
+            midi.process (juce::MidiMessage::pitchWheel (1, 8192));
+            advance (480);
+            for (const auto& id : { juce::String (global::outputGain), macroId (0), cutoffId })
+                expectWithinAbsoluteError (p.getState().getParameter (id)->getValue(), 0.25f, 0.00001f);
+
+            beginTest ("Learn capture cancels replaced movement and preserves subsequent ramp through UI publication");
+            auto* gain = p.getState().getParameter (global::outputGain);
+            midi.learn (global::outputGain);
+            event (0);
+            expectWithinAbsoluteError (gain->getValue(), 0.25f, 0.00001f);
+            expectEquals (mix->getValue(), 1.0f);
+            advance (960);
+            expectWithinAbsoluteError (gain->getValue(), 0.25f, 0.00001f);
+            event (0);
+            midi.flushCapture();
+            advance (960);
+            expectEquals (gain->getValue(), 0.0f);
+            expectEquals (mix->getValue(), 0.0f);
+
+            beginTest ("Switches, integers, and synced note choices bypass smoothing");
+            expect (midi.setSmoothingMode (Mode::linearSlow).wasOk());
+            for (const auto& id : { juce::String (global::freeze), juce::String (global::maxGlitches) })
+            {
+                midi.bind (id, { 1, 8 });
+                midi.process (juce::MidiMessage::controllerEvent (1, 8, 127));
+                expectEquals (p.getState().getParameter (id)->getValue(), 1.0f);
+            }
+            const auto timeId = tapId (0, tap::time);
+            midi.bind (timeId, { 1, 9 });
+            p.getState().getParameter (timeId)->setValueNotifyingHost (0);
+            midi.process (juce::MidiMessage::controllerEvent (1, 9, 127));
+            advance (480);
+            const auto timeBefore = p.getState().getParameter (timeId)->getValue();
+            p.getState().getParameter (global::sync)->setValueNotifyingHost (1);
+            advance (3840);
+            expectEquals (p.getState().getParameter (timeId)->getValue(), timeBefore);
+            midi.process (juce::MidiMessage::controllerEvent (1, 9, 127));
+            expectEquals (p.getState().getParameter (syncedCounterpart (timeId))->getValue(), 1.0f);
+
+            beginTest ("Binding removal and preset/project restore cancel pending movement");
+            mix->setValueNotifyingHost (0);
+            event (127);
+            advance (480);
+            midi.remove (global::mix);
+            advance (3840);
+            expectWithinAbsoluteError (mix->getValue(), 0.125f, 0.00001f);
+            midi.bind (global::mix, { 1, 7 });
+            event (127);
+            p.loadFactoryPreset (0);
+            const auto loaded = mix->getValue();
+            advance (3840);
+            expectEquals (mix->getValue(), loaded);
+            juce::MemoryBlock saved;
+            p.getStateInformation (saved);
+            event (0);
+            p.setStateInformation (saved.getData(), (int) saved.getSize());
+            advance (3840);
+            expectEquals (mix->getValue(), loaded);
+            expect (midi.smoothingMode() == Mode::linearSlow);
+
+            beginTest ("Audio blocks advance without MIDI; event offsets, notifications and passthrough preserved");
+            midi.clear();
+            midi.bind (global::mix, { 1, 7 });
+            expect (midi.setSmoothingMode (Mode::linearFast).wasOk());
+            p.prepareToPlay (48000, 128);
+            mix->setValueNotifyingHost (0);
+            HostNotifications host;
+            p.addListener (&host);
+            juce::AudioBuffer<float> audio (2, 128);
+            juce::MidiBuffer messages;
+            messages.addEvent (juce::MidiMessage::controllerEvent (1, 7, 127), 40);
+            audio.clear();
+            p.processBlock (audio, messages);
+            expectWithinAbsoluteError (mix->getValue(), 0.05f, 0.00001f);
+            expectEquals ((*messages.begin()).samplePosition, 40);
+            expectEquals ((*messages.begin()).getMessage().getControllerValue(), 127);
+            messages.clear();
+            for (int i = 0; i < 7; ++i) { audio.clear(); p.processBlock (audio, messages); }
+            expectEquals (mix->getValue(), 1.0f);
+            expect (host.values > 1 && host.values <= 21);
+            expectEquals (host.gestures, 0);
+            p.removeListener (&host);
+            expect (midi.setSmoothingMode (Mode::exponentialSlow).wasOk());
+        }
+        beginTest ("Preference reload, invalid fallback, unrelated settings preserved and write failure stays active");
+        {
+            auto preference = state::MidiSmoothing::shared (settings);
+            expect (preference->get() == Mode::exponentialSlow);
+        }
+        expect (settings.replaceWithText ("{\"midiSmoothing\":\"unknown\",\"other\":42}"));
+        {
+            auto preference = state::MidiSmoothing::shared (settings);
+            expect (preference->get() == Mode::off);
+            expect (preference->set (Mode::linearFast).wasOk());
+            expectEquals ((int) juce::JSON::parse (settings)["other"], 42);
+        }
+        const auto blocked = root.getChildFile ("blocked");
+        expect (blocked.replaceWithText ("keep"));
+        {
+            auto preference = state::MidiSmoothing::shared (blocked.getChildFile ("Settings.json"));
+            expect (preference->set (Mode::linearSlow).failed());
+            expect (preference->get() == Mode::linearSlow);
+        }
+        expect (root.deleteRecursively());
     }
 
     void files (AstralayProcessor& p)
@@ -265,7 +496,7 @@ public:
     void timing()
     {
         beginTest ("Event offset matches rendering the same update between blocks");
-        AstralayProcessor whole, split;
+        AstralayProcessor whole (testFolder), split (testFolder);
         for (auto* p : { &whole, &split })
         {
             p->loadFactoryPreset (0);
@@ -292,7 +523,7 @@ public:
     void editor()
     {
         beginTest ("Editor target selection consumes Enter, remains fixed on navigation, closes cleanly");
-        AstralayProcessor p;
+        AstralayProcessor p (testFolder);
         p.getMidiMappings().clear();
         auto editor = std::unique_ptr<juce::AudioProcessorEditor> (p.createEditor());
         editor->addToDesktop (juce::ComponentPeer::windowIsTemporary);
@@ -369,6 +600,8 @@ public:
             expect (p.getMidiMappings().bound (params::tapId (0, params::tap::enabled)));
         }
     }
+private:
+    juce::File testFolder;
 };
 MidiTests midiTests;
 }

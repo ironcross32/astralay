@@ -84,6 +84,7 @@ target_sources(Astralay
         source/state/DiagnosticLog.cpp
         source/state/History.cpp
         source/state/MidiMappings.cpp
+        source/state/MidiSmoothing.cpp
         source/state/Macros.cpp
         source/state/Presets.cpp
         source/ui/Announcer.cpp
@@ -159,6 +160,7 @@ if(ASTRALAY_BUILD_TESTS)
             source/state/DiagnosticLog.cpp
             source/state/History.cpp
             source/state/MidiMappings.cpp
+            source/state/MidiSmoothing.cpp
             source/state/Macros.cpp
             source/state/Presets.cpp
             source/ui/Announcer.cpp

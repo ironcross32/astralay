@@ -26,3 +26,13 @@ No DAW or screen-reader session was controlled during implementation. Reaper is 
 - File UI: invalid names stay editable; overwrite/external-change confirmation; Save/Discard/Cancel on load; failed/canceled saves block dependent operations; invalid files are omitted without announcements; empty, modified, missing and invalid defaults; undo/redo restores in-memory metadata without changing files.
 
 Plugin-format MIDI representation and host routing can limit passthrough and automation recording. The processor does not remove or generate events; wrapper/host behavior needs the format-specific manual checks above.
+
+## MIDI smoothing implementation verification
+
+The confirmed design in [MIDI_smoothing.md](MIDI_smoothing.md) is implemented. Windows Release builds of the test runner, VST3, CLAP, and Standalone pass. Final CTest passed in 32.30 seconds: 253,916 checks passed, 0 failed.
+
+Automated coverage includes fast/slow linear and exponential timing; multiple sample rates; normalized movement of skewed controls and macro values; pitch-bend fan-out; duplicate-event handling; retargeting; live shared preferences; preference reload, invalid fallback, unrelated setting preservation and write failures; immediate stepped controls; mouse/automation cancellation; sync, binding, learn, preset and project interruptions; continued movement in MIDI-free audio blocks; event offsets, passthrough and bounded host notifications. MIDI tests use isolated temporary preference folders rather than the user's saved smoothing setting.
+
+The Debug test build remains blocked by an existing unrelated diagnostics compile error: source/state/DiagnosticLog.cpp calls dsp::diagnostics::isNonFinite, which is not declared. Release validation does not compile that diagnostics path.
+
+Manual acceptance remains required for the accessible smoothing submenu and change announcements, controller feel in Reaper, host automation recording of the smoothed trajectory, and live preference updates across multiple hosted instances. No macOS/AU build or manual host/screen-reader test was performed.

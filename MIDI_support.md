@@ -133,7 +133,7 @@ MIDI writes the target's stored parameter value. It is not a temporary modulatio
 - For toggles, the lower half of the source range means Off and the upper half means On. There is no press-to-toggle behavior.
 - Use immediate movement, with no pickup requirement. The first event after learning completes can jump the parameter to the controller's position.
 - Honor MIDI event positions within each audio block.
-- Add no new MIDI smoothing in this version. Existing parameter/DSP smoothing still applies, so rapid or large controller movements can produce abrupt audible changes.
+- MIDI smoothing is configured through the MIDI menu: Off, Linear Fast, Linear Slow, Exponential Fast, or Exponential Slow. Fast is 20 ms and Slow is 80 ms; durations are omitted from menu labels. The default is Off. Continuous controls follow the smoothed movement; toggles and stepped controls remain immediate. See [MIDI_smoothing.md](MIDI_smoothing.md) for the full confirmed behavior. Existing parameter/DSP smoothing still applies afterward.
 
 Expose MIDI-driven parameter changes to the host for automation recording where supported. If host automation and MIDI both control a parameter, the latest applied update wins; neither has permanent priority.
 
@@ -267,7 +267,7 @@ Add a "Main menu" button as the first item in the main interface grouping. Click
 
 The MIDI submenu contains:
 
-1. "Smoothing", disabled as a placeholder for future work.
+1. "Smoothing", a submenu containing the five checked-choice options described above. Its application-wide preference is saved in Documents/Astralay/Settings.json independently of mappings, sound presets, and project state, and changes update other instances in the same running host.
 2. "Save MIDI mapping" and "Save MIDI mapping as...", available only for a nonempty current mapping.
 3. "Set current mapping as default", available even when the current mapping is empty.
 4. "Clear default MIDI mapping".
@@ -293,4 +293,4 @@ These are implementation acceptance checks, not claims of completed testing:
 
 ## Deferred features
 
-Relative encoders, combined high-resolution CC protocols, all-channels bindings, pickup, new MIDI smoothing, MIDI control of context-menu-only parameters, expanded macro routing, and additional binding-inspection UI are outside this implementation.
+Relative encoders, combined high-resolution CC protocols, all-channels bindings, pickup, MIDI control of context-menu-only parameters, expanded macro routing, and additional binding-inspection UI are outside this implementation.

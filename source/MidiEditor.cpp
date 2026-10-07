@@ -215,7 +215,14 @@ void AstralayEditor::showMainMenu()
     const auto files = midi.scan();
     const auto defaultFile = midi.defaultFile();
     juce::PopupMenu menu, sub;
-    sub.addItem (1, "Smoothing", false);
+    juce::PopupMenu smoothingMenu;
+    for (int i = 0; i < 5; ++i)
+    {
+        const auto mode = (astralay::state::MidiSmoothing::Mode) i;
+        smoothingMenu.addItem (10 + i, astralay::state::MidiSmoothing::label (mode), true,
+                              midi.smoothingMode() == mode);
+    }
+    sub.addSubMenu ("Smoothing", smoothingMenu);
     sub.addItem (2, "Save MIDI mapping", ! current.bindings.empty());
     sub.addItem (3, "Save MIDI mapping as...", ! current.bindings.empty());
     sub.addItem (4, "Set current mapping as default");
@@ -235,7 +242,14 @@ void AstralayEditor::showMainMenu()
     {
         if (safe == nullptr || result == 0) return;
         auto& mappings = safe->processor.getMidiMappings();
-        if (result == 2 || result == 3) safe->saveMidiMapping (result == 3);
+        if (result >= 10 && result <= 14)
+        {
+            const auto mode = (astralay::state::MidiSmoothing::Mode) (result - 10);
+            const auto status = mappings.setSmoothingMode (mode);
+            safe->announce (status.wasOk() ? "MIDI smoothing " + astralay::state::MidiSmoothing::label (mode)
+                                          : status.getErrorMessage());
+        }
+        else if (result == 2 || result == 3) safe->saveMidiMapping (result == 3);
         else if (result == 4) safe->defaultMidiMapping();
         else if (result == 5)
         {

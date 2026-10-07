@@ -12,11 +12,12 @@ namespace
     const juce::Identifier outputClipProperty { "outputClip" };
 }
 
-AstralayProcessor::AstralayProcessor()
+AstralayProcessor::AstralayProcessor (juce::File midiFolder)
     : AudioProcessor (BusesProperties()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      state (*this, nullptr, "Astralay", astralay::params::createLayout())
+      state (*this, nullptr, "Astralay", astralay::params::createLayout()),
+      midiMappings (state, history, std::move (midiFolder))
 {
     using namespace astralay::params;
 
@@ -177,6 +178,7 @@ astralay::state::History::Snapshot AstralayProcessor::captureSnapshot() const
 
 juce::String AstralayProcessor::applyPreset (const astralay::state::History::Snapshot& preset)
 {
+    midiMappings.cancelSmoothing();
     const auto before = captureSnapshot();
     lastModulationEdit.clear();
     history.applyAndRecord (before, preset, "load preset " + preset.presetName);
@@ -499,6 +501,7 @@ bool AstralayProcessor::stepSmear (bool amount, int direction, bool mergeWithPre
 
 void AstralayProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    midiMappings.prepare (sampleRate);
     engine.prepare (sampleRate, samplesPerBlock, astralay::params::maxDelaySeconds);
     updateEngineSettings();
     engine.reset();
@@ -714,11 +717,16 @@ void AstralayProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     int cursor = 0;
     const auto renderTo = [&] (int end)
     {
-        if (end <= cursor) return;
-        updateEngineSettings (cursor);
-        engine.process (left + cursor, monoInput ? nullptr : right + cursor,
-                        left + cursor, right + cursor, end - cursor);
-        cursor = end;
+        while (cursor < end)
+        {
+            if (midiMappings.refreshSmoothing()) midiModified.store (true);
+            const auto count = juce::jmin (end - cursor, midiMappings.samplesUntilSmoothingUpdate());
+            updateEngineSettings (cursor);
+            engine.process (left + cursor, monoInput ? nullptr : right + cursor,
+                            left + cursor, right + cursor, count);
+            if (midiMappings.advanceSmoothing (count)) midiModified.store (true);
+            cursor += count;
+        }
     };
     for (const auto metadata : midi)
     {

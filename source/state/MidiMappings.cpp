@@ -16,6 +16,7 @@ private:
     std::function<void()> redo, reverse;
 };
 bool integer (const juce::var& v) { return v.isInt() || v.isInt64(); }
+thread_local juce::AudioProcessorParameter* midiWriter = nullptr;
 }
 
 juce::String MidiMappings::Source::name() const
@@ -50,6 +51,16 @@ MidiMappings::MidiMappings (juce::AudioProcessorValueTreeState& state, History& 
     }
     activeSources.resize (targets.size());
     scratchSources.resize (targets.size());
+    parameterTargets.resize ((size_t) state.processor.getParameters().size());
+    for (auto& target : targets)
+        for (auto* parameter : { target.parameter, target.synced })
+            if (parameter != nullptr)
+            {
+                parameterTargets[(size_t) parameter->getParameterIndex()] = &target;
+                parameter->addListener (this);
+            }
+    smoothing = MidiSmoothing::shared (directory.getParentDirectory().getChildFile ("Settings.json"));
+    audioMode = smoothing->get();
     directory.createDirectory();
     (void) scan();
     const auto file = defaultFile();
@@ -69,7 +80,122 @@ MidiMappings::MidiMappings (juce::AudioProcessorValueTreeState& state, History& 
     startTimer (20);
 }
 
-MidiMappings::~MidiMappings() { stopTimer(); }
+MidiMappings::~MidiMappings()
+{
+    stopTimer();
+    for (auto& target : targets)
+        for (auto* parameter : { target.parameter, target.synced })
+            if (parameter != nullptr) parameter->removeListener (this);
+}
+void MidiMappings::parameterValueChanged (int index, float)
+{
+    if (! juce::isPositiveAndBelow (index, (int) parameterTargets.size())) return;
+    auto* target = parameterTargets[(size_t) index];
+    if (target == nullptr) return;
+    auto* parameter = target->parameter->getParameterIndex() == index ? target->parameter : target->synced;
+    if (parameter != midiWriter) target->edits.fetch_add (1);
+    if (parameter == sync)
+        for (auto& time : targets)
+            if (time.synced != nullptr) time.edits.fetch_add (1);
+}
+bool MidiMappings::writeValue (juce::RangedAudioParameter* parameter, float value) noexcept
+{
+    const auto snapped = parameter->convertTo0to1 (parameter->convertFrom0to1 (value));
+    if (parameter->getValue() == snapped) return false; // Always deliver exact endpoints.
+    const juce::ScopedValueSetter<juce::AudioProcessorParameter*> writing (midiWriter, parameter);
+    parameter->setValueNotifyingHost (snapped);
+    soundChanged.store (true);
+    return true;
+}
+void MidiMappings::prepare (double sampleRate) noexcept
+{
+    for (auto& target : targets)
+        target.elapsed = (int) std::round (target.elapsed * sampleRate / rate);
+    rate = sampleRate;
+    updateInterval = juce::jmax (1, (int) std::round (rate * 0.001));
+    untilUpdate = updateInterval;
+}
+bool MidiMappings::refreshSmoothing() noexcept
+{
+    const auto revision = routeRevision.load();
+    if (revision != audioRevision && (revision & 1) == 0)
+    {
+        for (size_t i = 0; i < targets.size(); ++i) scratchSources[i] = targets[i].source.load();
+        if (routeRevision.load() == revision)
+        {
+            for (size_t i = 0; i < targets.size(); ++i)
+                if (scratchSources[i] != activeSources[i]) targets[i].moving = false;
+            activeSources.swap (scratchSources);
+            audioRevision = revision;
+        }
+    }
+    const auto reset = resetRevision.load();
+    const auto mode = smoothing->get();
+    bool changed = false;
+    for (auto& target : targets)
+    {
+        const auto edits = target.edits.load();
+        if (edits != target.audioEdits || reset != audioResetRevision) target.moving = false;
+        target.audioEdits = edits;
+        if (! target.moving || mode == audioMode) continue;
+        if (mode == MidiSmoothing::Mode::off)
+        {
+            changed |= writeValue (target.movingParameter, (float) target.destination);
+            target.moving = false;
+        }
+        else
+        {
+            target.current = target.start = target.movingParameter->getValue();
+            target.elapsed = 0;
+        }
+    }
+    audioResetRevision = reset;
+    audioMode = mode;
+    return changed;
+}
+int MidiMappings::samplesUntilSmoothingUpdate() const noexcept
+{
+    int next = std::numeric_limits<int>::max();
+    const auto duration = juce::jmax (1, (int) std::round (rate * MidiSmoothing::seconds (audioMode)));
+    for (const auto& target : targets)
+        if (target.moving)
+        {
+            next = juce::jmin (next, untilUpdate);
+            if (MidiSmoothing::linear (audioMode)) next = juce::jmin (next, duration - target.elapsed);
+        }
+    return juce::jmax (1, next);
+}
+bool MidiMappings::advanceSmoothing (int samples) noexcept
+{
+    bool changed = refreshSmoothing();
+    if (std::none_of (targets.begin(), targets.end(), [] (const auto& target) { return target.moving; }))
+    {
+        untilUpdate = updateInterval;
+        return changed;
+    }
+    untilUpdate -= samples;
+    const auto publish = untilUpdate <= 0;
+    const auto duration = juce::jmax (1, (int) std::round (rate * MidiSmoothing::seconds (audioMode)));
+    const auto exponentialFactor = MidiSmoothing::linear (audioMode) ? 0.0
+        : std::exp (-std::log (100.0) * samples / duration);
+    for (auto& target : targets)
+    {
+        if (! target.moving) continue;
+        target.elapsed += samples;
+        if (MidiSmoothing::linear (audioMode))
+            target.current = target.start + (target.destination - target.start)
+                * juce::jmin (1.0, (double) target.elapsed / duration);
+        else
+            target.current = target.destination + (target.current - target.destination)
+                * exponentialFactor;
+        const auto done = MidiSmoothing::linear (audioMode) ? target.elapsed >= duration
+                                                          : std::abs (target.current - target.destination) <= 0.000001;
+        if (done) { target.current = target.destination; target.moving = false; }
+        if (publish || done) changed |= writeValue (target.movingParameter, (float) target.current);
+    }
+    if (publish) untilUpdate = updateInterval;
+    return changed;
+}
 int MidiMappings::indexOf (const juce::String& id) const
 {
     for (size_t i = 0; i < targets.size(); ++i)
@@ -117,45 +243,45 @@ float MidiMappings::normalisedPitch (int value) noexcept
 }
 bool MidiMappings::process (const juce::MidiMessage& message) noexcept
 {
-    if (! message.isController() && ! message.isPitchWheel()) return false;
+    const auto refreshed = refreshSmoothing();
+    if (! message.isController() && ! message.isPitchWheel()) return refreshed;
     const Source source { message.getChannel(), message.isController() ? message.getControllerNumber() : -1 };
     const auto code = source.code();
     auto learnValue = learning.load();
     if (learnValue >= 2 && (learnValue >> 32) == 0)
     {
         if (learning.compare_exchange_strong (learnValue, learnValue | ((uint64_t) code << 32)))
-            return false; // Suppress this event for every target, including existing bindings.
+        {
+            targets[(size_t) (learnValue & 0xffffffffu) - 2].moving = false;
+            return refreshed; // Suppress this event for every target, including existing bindings.
+        }
     }
     const auto value = message.isController() ? (float) message.getControllerValue() / 127.0f
                                                : normalisedPitch (message.getPitchWheelValue());
     const auto captured = learning.load();
-    // Publish a whole mapping at once. Never wait for a UI/state writer; retain the previous
-    // audio snapshot if it is currently writing. All route slots are atomic to avoid data races.
-    const auto revision = routeRevision.load();
-    if (revision != audioRevision && (revision & 1) == 0)
-    {
-        for (size_t i = 0; i < targets.size(); ++i) scratchSources[i] = targets[i].source.load();
-        if (routeRevision.load() == revision)
-        {
-            activeSources.swap (scratchSources);
-            audioRevision = revision;
-        }
-    }
     const auto capturedIndex = (captured >> 32) != 0 ? (int) (captured & 0xffffffffu) - 2 : -1;
-    bool changed = false;
+    bool changed = refreshed;
     for (size_t i = 0; i < targets.size(); ++i)
     {
         auto& target = targets[i];
         const auto assigned = (int) i == capturedIndex ? (int) (captured >> 32) : activeSources[i];
         if (assigned != code) continue;
+        if (activeSources[i] != assigned) target.moving = false;
+        activeSources[i] = assigned; // A completed capture already owns this route before UI publication.
         auto* p = target.synced != nullptr && sync->getValue() >= 0.5f ? target.synced : target.parameter;
         const auto snapped = p->convertTo0to1 (p->convertFrom0to1 (value));
-        if (! juce::approximatelyEqual (p->getValue(), snapped))
+        if (audioMode != MidiSmoothing::Mode::off && ! p->isDiscrete() && p->getNormalisableRange().interval == 0)
         {
-            // No gestures: MIDI is automation, not an Astralay undo transaction.
-            p->setValueNotifyingHost (snapped);
-            changed = true;
+            if (target.moving && target.destination == (double) snapped) continue;
+            const auto wasMoving = target.moving;
+            target.current = target.start = wasMoving ? target.current : p->getValue();
+            target.destination = snapped;
+            target.elapsed = 0;
+            target.movingParameter = p;
+            target.moving = target.current != target.destination;
+            target.audioEdits = target.edits.load();
         }
+        else changed |= writeValue (p, snapped);
     }
     if (changed) soundChanged.store (true);
     return changed;
@@ -210,6 +336,9 @@ void MidiMappings::bind (const juce::String& id, Source source)
     const juce::ScopedLock lock (mappingLock);
     if (! eligible (id) || source.channel < 1 || source.channel > 16 || source.controller < -1 || source.controller > 127) return;
     auto next = mapping;
+    const auto previous = next.bindings.find (id);
+    if (previous != next.bindings.end() && previous->second != source)
+        targets[(size_t) indexOf (id)].edits.fetch_add (1);
     next.bindings[id] = source;
     next.dirty = true;
     edit (std::move (next), "MIDI mapping");
@@ -220,11 +349,18 @@ void MidiMappings::remove (const juce::String& id)
     cancelLearn();
     auto next = mapping;
     if (next.bindings.erase (id) == 0) return;
+    targets[(size_t) indexOf (id)].edits.fetch_add (1);
     next.dirty = true;
     if (next.bindings.empty()) next = {};
     edit (std::move (next), "remove MIDI mapping");
 }
-void MidiMappings::clear() { const juce::ScopedLock lock (mappingLock); cancelLearn(); edit ({}, "clear MIDI mapping"); }
+void MidiMappings::clear()
+{
+    const juce::ScopedLock lock (mappingLock);
+    cancelLearn();
+    cancelSmoothing();
+    edit ({}, "clear MIDI mapping");
+}
 
 juce::String MidiMappings::serialise (const Mapping& value) const
 {
@@ -279,6 +415,7 @@ juce::Result MidiMappings::load (const juce::File& file)
     const auto contents = file.loadFileAsString();
     const auto result = parse (contents, next);
     if (result.failed()) return result;
+    cancelSmoothing();
     next.file = file;
     next.savedContents = contents;
     edit (std::move (next), "load MIDI mapping " + file.getFileNameWithoutExtension());
@@ -398,6 +535,7 @@ std::unique_ptr<juce::XmlElement> MidiMappings::projectState()
 }
 void MidiMappings::restoreProject (const juce::XmlElement* xml)
 {
+    cancelSmoothing();
     const juce::ScopedLock lock (mappingLock);
     if (learning.exchange (0) != 0 && announce) announce ("MIDI learn canceled");
     soundChanged.store (false);

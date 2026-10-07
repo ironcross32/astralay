@@ -3,13 +3,14 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <deque>
 #include "History.h"
+#include "MidiSmoothing.h"
 
 namespace astralay::state
 {
 /** Instance-owned MIDI bindings. UI/file operations run on the message thread. The audio
     thread only reads pre-resolved parameters and atomic source codes; it never parses JSON,
     allocates routes, touches files or records undo actions. */
-class MidiMappings final : private juce::Timer
+class MidiMappings final : private juce::Timer, private juce::AudioProcessorParameter::Listener
 {
 public:
     struct Source
@@ -44,6 +45,13 @@ public:
     void cancelLearn();
     // Called on the audio thread, before rendering the event's sample. True when sound changed.
     bool process (const juce::MidiMessage&) noexcept;
+    void prepare (double sampleRate) noexcept;
+    bool refreshSmoothing() noexcept;
+    bool advanceSmoothing (int samples) noexcept;
+    int samplesUntilSmoothingUpdate() const noexcept;
+    void cancelSmoothing() noexcept { resetRevision.fetch_add (1); }
+    MidiSmoothing::Mode smoothingMode() const noexcept { return smoothing->get(); }
+    juce::Result setSmoothingMode (MidiSmoothing::Mode mode) { return smoothing->set (mode); }
     // Also callable before UI/state operations, so a capture is committed without timer latency.
     void flushCapture();
     void setAnnouncer (std::function<void (const juce::String&)> callback)
@@ -77,6 +85,12 @@ private:
         juce::RangedAudioParameter* parameter = nullptr;
         juce::RangedAudioParameter* synced = nullptr;
         std::atomic<int> source { 0 };
+        std::atomic<uint64_t> edits { 0 };
+        uint64_t audioEdits = 0;
+        juce::RangedAudioParameter* movingParameter = nullptr;
+        double current = 0, start = 0, destination = 0;
+        int elapsed = 0;
+        bool moving = false;
     };
     int indexOf (const juce::String&) const;
     void apply (const Mapping&);
@@ -84,6 +98,16 @@ private:
     void timerCallback() override;
     juce::Result writeDefault (const juce::String&);
     static juce::Result atomicWrite (const juce::File&, const juce::String&);
+    void parameterValueChanged (int, float) override;
+    void parameterGestureChanged (int, bool) override {}
+    bool writeValue (juce::RangedAudioParameter*, float) noexcept;
+    std::vector<Target*> parameterTargets;
+    std::shared_ptr<MidiSmoothing> smoothing;
+    MidiSmoothing::Mode audioMode = MidiSmoothing::Mode::off;
+    double rate = 48000;
+    int updateInterval = 48, untilUpdate = 48;
+    std::atomic<uint64_t> resetRevision { 0 };
+    uint64_t audioResetRevision = 0;
 
     History& history;
     mutable juce::CriticalSection mappingLock; // UI/state only; never acquired by process().

@@ -28,7 +28,7 @@ public:
     {
     }
 
-    juce::String getHelp() const override { return slider.getHelpText(); }
+    juce::String getHelp() const override { return helpTag (slider.getHelpText()); }
 
 private:
     static juce::AccessibilityActions actionsFor (ParameterSlider& s)

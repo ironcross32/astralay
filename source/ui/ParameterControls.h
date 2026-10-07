@@ -161,7 +161,8 @@ private:
 };
 
 /** Sets a control's accessible title and help text (as both help text and tooltip, since JUCE's
-    handlers for sliders, combo boxes and labels report the tooltip as help).
+    handlers for sliders, combo boxes and labels report the tooltip as help). Screen readers only
+    get the help while help tags are on (see HelpTags.h).
 */
 void describe (juce::Component& component, const juce::String& title, const juce::String& help);
 

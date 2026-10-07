@@ -16,12 +16,12 @@ std::shared_ptr<MidiSmoothing> MidiSmoothing::shared (const juce::File& file)
     if (! result) { result.reset (new MidiSmoothing (file)); weak = result; }
     return result;
 }
-MidiSmoothing::MidiSmoothing (juce::File settings) : file (std::move (settings))
+MidiSmoothing::MidiSmoothing (const juce::File& file) : settings (Settings::shared (file))
 {
-    const auto root = juce::JSON::parse (file);
-    if (! root.isObject() || ! root["midiSmoothing"].isString()) return;
+    const auto stored = settings->read ("midiSmoothing");
+    if (! stored.isString()) return;
     for (int i = 0; i < 5; ++i)
-        if (root["midiSmoothing"].toString() == keys[i]) mode.store ((Mode) i);
+        if (stored.toString() == keys[i]) mode.store ((Mode) i);
 }
 juce::String MidiSmoothing::label (Mode value)
 {
@@ -32,14 +32,7 @@ juce::Result MidiSmoothing::set (Mode value)
 {
     if (! juce::isPositiveAndBelow ((int) value, 5)) return juce::Result::fail ("Invalid MIDI smoothing choice");
     mode.store (value); // Keep the session preference even if persistence fails.
-    auto root = juce::JSON::parse (file);
-    if (! root.isObject()) root = juce::var (new juce::DynamicObject());
-    root.getDynamicObject()->setProperty ("midiSmoothing", keys[(int) value]);
-    if (file.getParentDirectory().createDirectory().failed())
-        return juce::Result::fail ("MIDI smoothing preference could not be saved");
-    juce::TemporaryFile temporary (file);
-    if (! temporary.getFile().replaceWithText (juce::JSON::toString (root))
-        || ! temporary.overwriteTargetFileWithTemporary())
+    if (settings->write ("midiSmoothing", keys[(int) value]).failed())
         return juce::Result::fail ("MIDI smoothing preference could not be saved");
     return juce::Result::ok();
 }

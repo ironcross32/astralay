@@ -231,6 +231,14 @@ Every control in the tap group includes the tap number in its accessible name (f
 
 Every control has a help tag of one or two plain sentences describing what it does. Ranges are left out, since screen readers already announce each value and the extra words add verbosity. Claude drafts them, kept together in one table in the code so they are easy to edit. They are reviewed by the author before release.
 
+Help tags can be turned off, for users who know the plugin and want less speech:
+- Main menu, "Accessibility settings..." lays a panel over the editor, a group named "Accessibility settings" holding a "Help tags" checkbox and a Close button. The Close button or ESCAPE closes it and returns focus to the Main menu button.
+- While the panel is open, TAB and SHIFT+TAB move between its two controls and wrap, the editor's shortcuts do nothing, and the controls behind it are hidden from screen readers and the mouse.
+- Help tags are on by default. Switching the checkbox takes effect at once, without reopening the editor, since screen readers ask for a control's help each time they reach it.
+- When off, no control gives screen readers a help tag. Tooltips still show for sighted users.
+- The choice is shared by instances in the same running host, and is saved in `Documents/Astralay/Settings.json` as `helpTags`, independently of projects and presets.
+- In code: `source/ui/HelpTags.h` holds the switch, `source/ui/AccessibilitySettings.h` the panel and `source/state/Settings.h` the file.
+
 ### Keyboard
 
 Keyboard shortcuts, Windows / macOS:

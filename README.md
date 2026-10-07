@@ -127,6 +127,10 @@ The Performance group holds a single control, the performance area. While it has
 
 The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move. The arrows and the held freeze are not announced.
 
+### Help tags
+
+Every control has a help tag, a short description that screen readers read after its name. To turn them off, choose **Main menu → Accessibility settings...** and uncheck **Help tags**, then press Escape or activate Close. The change applies immediately. Tooltips still appear when hovering with the mouse. The choice defaults to on, is shared by instances in the same running host, and is saved in `Documents/Astralay/Settings.json` independently of projects and presets.
+
 ## Presets
 
 User presets are saved in `Documents/Astralay/Presets` on both Windows and macOS. Access factory presets by pressing "Load", then expanding the "Factory presets" entry.

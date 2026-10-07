@@ -114,7 +114,8 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
     : AudioProcessorEditor (p), processor (p), state (p.getState())
 {
     setLookAndFeel (&lookAndFeel);
-    synced = state.getRawParameterValue (params::global::sync)->load() >= 0.5f;
+    ui::setHelpTagsEnabled (processor.getSettings().helpTags());
+    synced =state.getRawParameterValue (params::global::sync)->load() >= 0.5f;
 
     addAndMakeVisible (content);
     content.addAndMakeVisible (mainGroup);
@@ -234,7 +235,7 @@ void AstralayEditor::addToggle (ui::AccessibleGroup& group, std::vector<LayoutIt
 
 void AstralayEditor::buildMainGroup()
 {
-    ui::describe (mainMenuButton, "Main menu", "MIDI mapping options.");
+    ui::describe (mainMenuButton, "Main menu", "MIDI mapping options and accessibility settings.");
     ui::describe (midiLearnButton, "MIDI learn", "Select a sound control, then move a MIDI controller. Activate again to cancel.");
     mainMenuButton.onClick = [this] { showMainMenu(); };
     midiLearnButton.onClick = [this] { toggleMidiLearn(); };
@@ -693,6 +694,53 @@ void AstralayEditor::closePrompt (bool refocus)
         promptFocus->grabKeyboardFocus();
 }
 
+void AstralayEditor::showAccessibilitySettings()
+{
+    if (accessibilitySettings != nullptr)
+        return;
+
+    processor.getMidiMappings().cancelLearn();
+    keyLayer.close();
+    closePrompt (false);
+
+    accessibilitySettings = std::make_unique<ui::AccessibilitySettings> (processor.getSettings().helpTags());
+
+    accessibilitySettings->onHelpTagsChanged = [this] (bool on)
+    {
+        ui::setHelpTagsEnabled (on);
+
+        // The screen reader reads out the checkbox's new state itself.
+        if (const auto saved = processor.getSettings().setHelpTags (on); saved.failed())
+            announce (saved.getErrorMessage());
+    };
+
+    accessibilitySettings->onClose = [this] { closeAccessibilitySettings(); };
+
+    content.addAndMakeVisible (*accessibilitySettings);
+    accessibilitySettings->setBounds (content.getLocalBounds());
+    accessibilitySettings->focusFirstControl();
+
+    for (auto* group : { &mainGroup, &tapGroup, &macrosGroup, &globalGroup, &performanceGroup })
+        group->setAccessible (false);
+}
+
+void AstralayEditor::closeAccessibilitySettings()
+{
+    if (accessibilitySettings == nullptr)
+        return;
+
+    for (auto* group : { &mainGroup, &tapGroup, &macrosGroup, &globalGroup, &performanceGroup })
+        group->setAccessible (true);
+
+    accessibilitySettings->setVisible (false);
+    content.removeChildComponent (accessibilitySettings.get());
+
+    // This runs inside the panel's own callbacks, so delete it once they have returned.
+    juce::MessageManager::callAsync ([doomed = std::shared_ptr<ui::AccessibilitySettings> (accessibilitySettings.release())] {});
+
+    mainMenuButton.grabKeyboardFocus();
+}
+
 void AstralayEditor::selectTap (int tapIndex)
 {
     selectedTap = juce::jlimit (0, params::numTaps - 1, tapIndex);
@@ -738,6 +786,11 @@ void AstralayEditor::refreshTapName (int tapIndex, bool on)
 //==============================================================================
 bool AstralayEditor::keyPressed (const juce::KeyPress& key)
 {
+    // The editor's shortcuts are off while the accessibility settings are open. The panel has
+    // already seen the key unless it has lost focus.
+    if (accessibilitySettings != nullptr)
+        return ! accessibilitySettings->hasKeyboardFocus (true) && accessibilitySettings->keyPressed (key);
+
     if (handleMidiKey (key)) return true;
     const auto mods = key.getModifiers();
 
@@ -1253,7 +1306,8 @@ void AstralayEditor::announce (const juce::String& text)
 void AstralayEditor::globalFocusChanged (juce::Component* focused)
 {
     if (midiKeyTarget != nullptr) midiKeyTarget->removeKeyListener (this);
-    midiKeyTarget = focused != nullptr && isParentOf (focused) ? focused : nullptr;
+    const auto inSettings = accessibilitySettings != nullptr && accessibilitySettings->isParentOf (focused);
+    midiKeyTarget = focused != nullptr && isParentOf (focused) && ! inSettings ? focused : nullptr;
     if (midiKeyTarget != nullptr) midiKeyTarget->addKeyListener (this);
     if (focusOutline != nullptr)
         focusOutline->setTarget (focused);
@@ -1389,4 +1443,7 @@ void AstralayEditor::resized()
 
     if (focusOutline != nullptr)
         focusOutline->setBounds (content.getLocalBounds());
+
+    if (accessibilitySettings != nullptr)
+        accessibilitySettings->setBounds (content.getLocalBounds());
 }

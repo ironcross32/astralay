@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_gui_basics/juce_gui_basics.h>
+#include "HelpTags.h"
 
 namespace astralay::ui
 {
@@ -18,13 +19,31 @@ public:
     virtual void showContextMenu() = 0;
 };
 
-/** Standard controls with an owning context menu and an optional consumed learn selection.
-    Keep the base control's native accessibility value/role and ordinary interactions. */
+/** A control as it is, unless it has a tooltip. JUCE's accessibility handlers for buttons, combo
+    boxes and labels report the tooltip as the help tag, so those leave it out while help tags
+    are off. */
 template <typename Base>
-class MenuControl : public Base, public ContextMenuTarget
+class HelpTagTooltip : public Base
 {
 public:
     using Base::Base;
+};
+
+template <typename Base> requires std::derived_from<Base, juce::TooltipClient>
+class HelpTagTooltip<Base> : public Base
+{
+public:
+    using Base::Base;
+    juce::String getTooltip() override { return tooltipAsHelpTag (Base::getTooltip()); }
+};
+
+/** Standard controls with an owning context menu and an optional consumed learn selection.
+    Keep the base control's native accessibility value/role and ordinary interactions. */
+template <typename Base>
+class MenuControl : public HelpTagTooltip<Base>, public ContextMenuTarget
+{
+public:
+    using HelpTagTooltip<Base>::HelpTagTooltip;
     std::function<bool()> selectMidiTarget;
     void setContextMenu (std::function<void()> callback)
     {

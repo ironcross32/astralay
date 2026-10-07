@@ -265,7 +265,7 @@ std::unique_ptr<juce::AccessibilityHandler> PerformancePad::createAccessibilityH
     // An image is the nearest role to a canvas that screen readers name on both platforms.
     juce::AccessibilityActions actions;
     actions.addAction (juce::AccessibilityActionType::showMenu, [this] { showContextMenu(); });
-    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::image, actions);
+    return std::make_unique<HelpTagHandler> (*this, juce::AccessibilityRole::image, actions);
 }
 
 } // namespace astralay::ui

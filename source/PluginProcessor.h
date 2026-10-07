@@ -56,6 +56,9 @@ public:
     astralay::state::History& getHistory() noexcept { return history; }
     astralay::state::MidiMappings& getMidiMappings() noexcept { return midiMappings; }
 
+    /** The preferences shared by every instance, kept beside the MIDI mappings folder. */
+    astralay::state::Settings& getSettings() noexcept { return *sharedSettings; }
+
     /** The current preset's name, and whether its settings have changed since it was loaded or
         saved. Both are saved with the session.
     */
@@ -246,6 +249,7 @@ private:
     juce::AudioProcessorValueTreeState state;
     astralay::state::History history { *this };
     astralay::state::MidiMappings midiMappings;
+    std::shared_ptr<astralay::state::Settings> sharedSettings {astralay::state::Settings::shared (midiMappings.settingsFile()) };
     std::atomic<bool> midiModified { false };
     std::array<TapParameters, astralay::params::numTaps> tapParameters;
     GlobalParameters globalParameters;

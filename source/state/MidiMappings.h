@@ -72,6 +72,7 @@ public:
     juce::File defaultFile() const;
     const juce::String& startupStatus() const { return startupProblem; }
     const juce::File& folder() const { return directory; }
+    juce::File settingsFile() const { return directory.getParentDirectory().getChildFile ("Settings.json"); }
     std::vector<juce::File> scan() const;
     juce::String serialise (const Mapping&) const;
     juce::Result parse (const juce::String&, Mapping&, bool allowEmpty = false) const;

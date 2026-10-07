@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "Settings.h"
 
 namespace astralay::state
 {
@@ -18,8 +19,8 @@ public:
     Mode get() const noexcept { return mode.load(); }
     juce::Result set (Mode);
 private:
-    explicit MidiSmoothing (juce::File);
-    juce::File file;
+    explicit MidiSmoothing (const juce::File&);
+    std::shared_ptr<Settings> settings;
     std::atomic<Mode> mode { Mode::off };
 };
 }

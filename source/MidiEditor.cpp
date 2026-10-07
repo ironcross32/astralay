@@ -238,11 +238,13 @@ void AstralayEditor::showMainMenu()
         sub.addItem (100 + (int) i, name);
     }
     menu.addSubMenu ("MIDI", sub);
+    menu.addItem (1, "Accessibility settings...");
     showMenu (menu, mainMenuButton, [safe = SafePointer<AstralayEditor> (this), files] (int result)
     {
         if (safe == nullptr || result == 0) return;
         auto& mappings = safe->processor.getMidiMappings();
-        if (result >= 10 && result <= 14)
+        if (result == 1) safe->showAccessibilitySettings();
+        else if (result >= 10 && result <= 14)
         {
             const auto mode = (astralay::state::MidiSmoothing::Mode) (result - 10);
             const auto status = mappings.setSmoothingMode (mode);

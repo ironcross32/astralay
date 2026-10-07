@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.22)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
 # Universal binaries: Apple Silicon and Intel.
@@ -87,8 +87,11 @@ target_sources(Astralay
         source/state/MidiSmoothing.cpp
         source/state/Macros.cpp
         source/state/Presets.cpp
+        source/state/Settings.cpp
+        source/ui/AccessibilitySettings.cpp
         source/ui/Announcer.cpp
         source/ui/ContextMenu.cpp
+        source/ui/HelpTags.cpp
         source/ui/HelpText.cpp
         source/ui/KeyLayer.cpp
         source/ui/ParameterControls.cpp
@@ -163,8 +166,11 @@ if(ASTRALAY_BUILD_TESTS)
             source/state/MidiSmoothing.cpp
             source/state/Macros.cpp
             source/state/Presets.cpp
+            source/state/Settings.cpp
+            source/ui/AccessibilitySettings.cpp
             source/ui/Announcer.cpp
             source/ui/ContextMenu.cpp
+            source/ui/HelpTags.cpp
             source/ui/HelpText.cpp
             source/ui/KeyLayer.cpp
             source/ui/ParameterControls.cpp

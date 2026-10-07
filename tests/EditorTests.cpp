@@ -221,6 +221,9 @@ public:
 
         beginTest ("Every control has a help tag");
         {
+            // Whatever the settings of whoever runs the tests say.
+            astralay::ui::setHelpTagsEnabled (true);
+
             for (auto* c : tabOrder (ed))
                 if (auto* handler = c->getAccessibilityHandler())
                     expect (handler->getHelp().isNotEmpty(), "No help for " + titleOf (*c));
@@ -794,6 +797,130 @@ public:
             {
                 volume->getAccessibilityHandler()->getValueInterface()->setValueAsString ("-inf");
                 expectWithinAbsoluteError (valueOf (processor, tapId (0, tap::volume)), volumeFloorDb, 0.01f);
+            }
+        }
+
+        beginTest ("Help tags can be turned off without reopening the editor, and the choice is saved");
+        {
+            // Never the settings of whoever runs the tests.
+            const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                  .getNonexistentChildFile ("AstralayHelpTagTests", "", false);
+            const auto file = root.getChildFile ("Settings.json");
+
+            {
+                AstralayProcessor isolated (root.getChildFile ("MIDI Mappings"));
+                auto& settings = isolated.getSettings();
+                expect (settings.helpTags(), "Help tags aren't on by default");
+
+                std::unique_ptr<juce::AudioProcessorEditor> open (isolated.createEditor());
+                open->addToDesktop (juce::ComponentPeer::windowIsTemporary);
+
+                const auto allHelp = [&]
+                {
+                    juce::StringArray help;
+
+                    for (auto* c : tabOrder (*open))
+                        if (auto* handler = c->getAccessibilityHandler())
+                            help.add (handler->getHelp());
+
+                    return help;
+                };
+
+                const auto withHelp = allHelp();
+                expect (! withHelp.contains (juce::String()));
+
+                astralay::ui::setHelpTagsEnabled (false);
+
+                for (const auto& help : allHelp())
+                    expect (help.isEmpty(), "Still read out: " + help);
+
+                astralay::ui::setHelpTagsEnabled (true);
+                expect (allHelp() == withHelp);
+
+                // Saved beside the other preferences, which are left alone.
+                expect (isolated.getMidiMappings().setSmoothingMode (astralay::state::MidiSmoothing::Mode::linearSlow).wasOk());
+                expect (settings.setHelpTags (false).wasOk());
+
+                const auto stored = juce::JSON::parse (file);
+                expect (stored["helpTags"].isBool() && ! (bool) stored["helpTags"]);
+                expectEquals (stored["midiSmoothing"].toString(), juce::String ("linearSlow"));
+            }
+
+            {
+                // A new editor starts from the saved choice.
+                AstralayProcessor isolated (root.getChildFile ("MIDI Mappings"));
+                expect (! isolated.getSettings().helpTags());
+
+                std::unique_ptr<juce::AudioProcessorEditor> open (isolated.createEditor());
+                open->addToDesktop (juce::ComponentPeer::windowIsTemporary);
+                expect (! astralay::ui::helpTagsEnabled());
+
+                if (auto* undo = findByTitle (*open, "Undo"))
+                    expect (undo->getAccessibilityHandler()->getHelp().isEmpty());
+                else
+                    expect (false, "Undo button missing");
+            }
+
+            // Anything but true or false leaves them on.
+            expect (file.replaceWithText ("{\"helpTags\":\"no\"}"));
+            expect (astralay::state::Settings::shared (file)->helpTags());
+
+            astralay::ui::setHelpTagsEnabled (true);
+            expect (root.deleteRecursively());
+        }
+
+        beginTest ("The accessibility settings keep Tab to themselves and close on Escape");
+        {
+            juce::Component window;
+            juce::TextButton outside ("Outside");
+            astralay::ui::AccessibilitySettings panel (true);
+
+            window.addAndMakeVisible (outside);
+            window.addAndMakeVisible (panel);
+            window.setSize (800, 600);
+            outside.setBounds (0, 0, 100, 30);
+            panel.setBounds (window.getLocalBounds());
+            window.addToDesktop (juce::ComponentPeer::windowIsTemporary);
+
+            const auto stops = tabOrder (panel);
+            juce::StringArray titles;
+
+            for (auto* c : stops)
+            {
+                titles.add (titleOf (*c));
+                expect (c->findKeyboardFocusContainer() == &panel);
+                expectEquals (groupPath (*c).joinIntoString ("/"), juce::String ("Accessibility settings"));
+                expect (c->getAccessibilityHandler()->getHelp().isNotEmpty(), "No help for " + titleOf (*c));
+            }
+
+            expectEquals (titles.joinIntoString (", "), juce::String ("Help tags, Close"));
+
+            if (stops.size() == 2)
+            {
+                // Nothing lies beyond either end, so Tab wraps to the other one.
+                juce::KeyboardFocusTraverser traverser;
+                expect (traverser.getNextComponent (stops.back()) == nullptr);
+                expect (traverser.getPreviousComponent (stops.front()) == nullptr);
+                expect (traverser.getNextComponent (stops.front()) == stops.back());
+
+                int changes = 0, closes = 0;
+                bool helpTagsOn = true;
+                panel.onHelpTagsChanged = [&] (bool on) { helpTagsOn = on; ++changes; };
+                panel.onClose = [&] { ++closes; };
+
+                dynamic_cast<juce::Button*> (stops.front())->setToggleState (false, juce::sendNotificationSync);
+                expectEquals (changes, 1);
+                expect (! helpTagsOn);
+
+                expect (panel.keyPressed (juce::KeyPress (juce::KeyPress::tabKey)));
+                expect (! panel.keyPressed (juce::KeyPress ('z', juce::ModifierKeys::commandModifier, 0)));
+                expectEquals (closes, 0);
+
+                expect (panel.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
+                expectEquals (closes, 1);
+
+                dynamic_cast<juce::Button*> (stops.back())->onClick();
+                expectEquals (closes, 2);
             }
         }
     }

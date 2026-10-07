@@ -59,7 +59,7 @@ MidiMappings::MidiMappings (juce::AudioProcessorValueTreeState& state, History& 
                 parameterTargets[(size_t) parameter->getParameterIndex()] = &target;
                 parameter->addListener (this);
             }
-    smoothing = MidiSmoothing::shared (directory.getParentDirectory().getChildFile ("Settings.json"));
+    smoothing = MidiSmoothing::shared (settingsFile());
     audioMode = smoothing->get();
     directory.createDirectory();
     (void) scan();

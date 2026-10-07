@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "state/Macros.h"
+#include "ui/AccessibilitySettings.h"
 #include "ui/AccessibleGroup.h"
 #include "ui/Announcer.h"
 #include "ui/ContextMenu.h"
@@ -192,6 +193,12 @@ private:
     juce::String appendMidiMenu (juce::PopupMenu&, juce::Component&);
     bool midiMenuResult (int, const juce::String&);
     void showMainMenu();
+
+    /** Lays the accessibility settings over the editor, hiding the controls behind them from
+        screen readers until they close.
+    */
+    void showAccessibilitySettings();
+    void closeAccessibilitySettings();
     void saveMidiMapping (bool saveAs, std::function<void()> after = {});
     void writeMidiMapping (const juce::File&, std::function<void()> after);
     void loadMidiMapping (const juce::File&);
@@ -262,7 +269,8 @@ private:
 
     std::vector<std::unique_ptr<SliderRow>> sliderRows;
     std::unique_ptr<FocusOutline> focusOutline;
-    juce::TooltipWindow tooltipWindow { this, 700 };
+    std::unique_ptr<astralay::ui::AccessibilitySettings> accessibilitySettings;
+    astralay::ui::TooltipWindow tooltipWindow { this, 700 };
     astralay::ui::Announcer announcer { *this };
     astralay::ui::KeyLayer keyLayer { announcer };
 

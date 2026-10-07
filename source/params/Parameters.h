@@ -89,6 +89,9 @@ namespace global
     inline constexpr auto smearSize    = "smearSize";
     inline constexpr auto mix          = "mix";
     inline constexpr auto outputGain   = "outputGain";
+    inline constexpr auto tapeStop      = "tapeStop";
+    inline constexpr auto tapeStopTime  = "tapeStopTime";
+    inline constexpr auto tapeStartTime = "tapeStartTime";
 }
 
 /** Full ID of a per-tap parameter, for example tapId (2, tap::feedback) is "t03_feedback".
@@ -118,6 +121,13 @@ juce::String defaultMacroName (int macroIndex);
     values that stand in for a time while host sync is on, which follow the time's modulation.
 */
 bool canModulate (const juce::String& parameterId);
+
+/** Whether a parameter is played rather than set, which is true of the tape stop. Such a
+    parameter can be automated and MIDI learned, but it is not saved with the session or in
+    presets, is left alone when a preset loads, can't be undone and doesn't mark the preset as
+    modified.
+*/
+bool isPerformanceState (const juce::String& parameterId);
 
 /** The note-value parameter that takes a time's place while host sync is on, for example
     "t01_timeSync" for "t01_time", or an empty string if there is none. A macro that moves the

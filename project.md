@@ -153,6 +153,24 @@ Output:
 - Output gain: -24 dB to +12 dB, default -3 dB.
 - Output clip: "+18 dBFS" (default), "0 dBFS" or "Off". A hard clip on the final output, after output gain, so that glitches piling up in a frozen loop cannot push the level to where a host mutes the track (Reaper mutes above +18 dBFS). The +18 dBFS ceiling sits about 0.001 dB under +18, so rounding cannot carry a clipped peak over that limit. It is not a parameter: it cannot be automated, is not part of a preset (loading one leaves it alone) and is not undoable. It is saved with the host session, per plugin instance. It has no control of its own: it is set from the output gain control's context menu.
 
+Tape stop:
+- Tape stop: on/off, default off. Slows the wet signal to a stop, dropping in pitch as a tape machine does when switched off, and brings it back up to speed when turned off. It applies to the wet signal only: the dry signal, the mix and the output gain are untouched, so it is most convincing with the mix at 100%.
+- Stop time: 50 ms to 2 s, default 500 ms. How long the tape takes from full speed to stopped.
+- Start time: 50 ms to 2 s, default 250 ms. How long it takes from stopped to full speed.
+- The engine's own clock slows: the taps, glitches, freeze loops, DC blocker and smear all run on one tape, so they slow and halt together and carry on from exactly where they stopped. There is no separate recording of the output and nothing to catch up.
+- Speed moves in a straight line. The two times are for the whole trip, and a part of a trip takes its share: released at half speed, a 250 ms start takes 125 ms, and switched on again part of the way up it slows from the speed it had reached. A change to either time during a ramp applies to the rest of that ramp.
+- The output's level fades over the last 6% of the speed, so a stopped tape is silent rather than holding a constant level.
+- The input keeps being recorded while the tape slows, onto slower tape, so those repeats come back higher in pitch and shorter once the tape is at speed: by the inverse of the speed they were recorded at. Each tape sample records the average of the input since the one before. Once stopped, the input is not recorded at all (it still passes dry).
+- The recorded input fades as the tape slows, by the square of how far the speed is above half: gain ((speed - 0.5) / 0.5)², so all of it at full speed, about -9 dB at 0.79 (which returns 4 semitones sharp), about -19 dB at 0.67 (7 semitones) and nothing at half speed or below. The same applies on the way back up. Recording everything, as the first version did, brought the whole ramp back as a full-level sweep: with a steady 440 Hz tone, one 250 ms tap and the default times, 230 ms of the returning repeat was more than a semitone sharp, rising to about 4.9 kHz and falling again, with 13% of the returned energy. With the fade the loudest sharp audio is about 4 semitones up at -9 dB and 7 semitones at -16 dB, and the sharp part carries 0.6% of the energy. Measured with `TapeProbe` in the harness. This only concerns new input: audio already in the delay is not attenuated.
+- The output is read between the tape's last two samples by linear interpolation. At full speed the tape is not interpolated and the wet path is exactly what it is without the tape stop, with no added latency. After a slow-down the tape arrives at full speed a fraction of a sample behind, and makes it up over at most 500 samples at 0.2% above full speed.
+- Everything on the tape runs in tape time: glide, the freeze crossfade and the taps' volume, pan and enable ramps take longer while it is slow and hold while it is stopped, so a tap switched off or a freeze engaged during a stop takes effect once the tape moves.
+- While host sync is on and the tape is slowed, the glitch chunk grid stretches with the tape instead of being aligned to the host's beats; alignment resumes at full speed. Repeats already in the delay lines then sit off the beat by however long the tape was slow.
+- Reproducible randomness advances in tape time, so a stop shifts every glitch after it until the next playback start.
+- When the plugin is prepared or reset, the speed jumps to wherever the switch says, without a ramp.
+- All three are host parameters, appended after every older parameter in a group of their own so existing indices do not move. They can be automated and MIDI learned, and none can be moved by a macro. Their host names are "Tape Stop", "Stop Time" and "Start Time".
+- The two times are ordinary settings: saved with sessions and presets, undoable.
+- The switch is played rather than set. It is never saved with the session or in a preset, so a session always opens with it off; loading a preset, and undoing or redoing one, leave it as it is; switching it adds no undo step and does not mark the preset modified, from the interface or from MIDI.
+
 ## Macros
 
 There are 8 macros. Each has a value and moves any number of other parameters by it.
@@ -178,12 +196,12 @@ There are 8 macros. Each has a value and moves any number of other parameters by
 - Save opens a native OS save dialog in the user preset folder, suggesting the current preset name.
 - Load opens a menu containing a "Factory presets" submenu and a "From file…" item, which opens a native OS open dialog in the user preset folder.
 - A new instance's preset name is "Init". When the current preset has been changed, the name label reads "<name>, modified" (a word rather than an asterisk, which screen readers often skip).
-- The host session state stores all parameters plus the currently selected tap, the output clip setting and the macro settings. A session saved before there were macros restores them at their defaults.
+- The host session state stores all parameters except the tape stop switch, plus the currently selected tap, the output clip setting and the macro settings. A session saved before there were macros restores them at their defaults.
 - Restoring host state with the editor open refreshes the preset label and rebinds the selected tap's controls. State-replacement notifications queue a refresh on the message thread, including when the host restores from another thread. Consecutive replacements display the latest state, and closing the editor cancels its pending refresh.
 
 ### Undo
 
-- Undo covers parameter changes, tap enable/disable, pastes, performance-area time and smear changes, preset loads, and macro changes: renaming, switching mode, and setting, editing or clearing a modulation. Changing the selected tap, the performance selection, a held freeze and which macro is armed are not undoable.
+- Undo covers parameter changes, tap enable/disable, pastes, performance-area time and smear changes, preset loads, and macro changes: renaming, switching mode, and setting, editing or clearing a modulation. Changing the selected tap, the performance selection, a held freeze, the tape stop and which macro is armed are not undoable.
 - A run of changes to the same modulation less than 600 ms apart joins into one step. Macro steps are announced as "Undo modulation of Tap 1 Feedback by Macro 1", "Undo rename Macro 1" and "Undo Macro 1 bipolar" (or "unipolar").
 - One slider gesture is one undo step. A run of edits to the same parameter less than 600 ms apart (such as repeated arrow presses) joins into one step.
 - Only the user's edits are recorded, recognised by their change gestures; host automation never enters the undo history or marks the preset modified.
@@ -219,10 +237,11 @@ There are five top-level groups, in this order:
     - High cut
     - Nine nested glitch sub-groups, named after each glitch type, in processing order: Reverse, Stutter, Granularize, Pitch, LPC formant, Cepstral formant, Ring modulation, Frequency modulation, Bit crusher. Inside each, the probability comes first, followed by the range controls, each minimum before its maximum. Pitch has two pairs: minimum and maximum, then minimum speed and maximum speed.
 3. Macros, with one nested sub-group for each of the 8 macros, named after the macro (see below). Inside each: the Arm button, then the value slider.
-4. Global, with three nested sub-groups:
+4. Global, with four nested sub-groups:
     - Timing: host sync, glide time, freeze, freeze sustain
     - Glitch engine: glitch placement, buffer size, maximum simultaneous glitches, minimum glitch length, maximum glitch length, reproducible randomness, seed
     - Output: smear amount, smear size, mix, output gain (whose context menu sets the output clip)
+    - Tape stop: tape stop, stop time, start time
 5. Performance: a single control, the performance area (see below).
 
 Every control in the tap group includes the tap number in its accessible name (for example "Tap 3 Feedback"), so each control identifies itself without relying on announcements.
@@ -336,7 +355,9 @@ It acts on a selection of taps, which is separate from the selected tap and has 
 - SHIFT+F switches freeze on or off, announcing "Freeze on" or "Freeze off".
 - G stops the glitches on every tap, whatever the selection, while it is held, and lets them start again when it is let go or focus leaves. No glitch starts, and those running fade out over 5 ms; glitched audio already in a feedback loop stays there. If the glitches were already switched off, releasing G switches them back on. It is not announced.
 - SHIFT+G switches the glitches off or on, announcing "Glitches off" or "Glitches on".
+- T stops the tape while it is held: the tape slows for as long as the key is down and speeds back up, from wherever it had got to, when the key is let go or focus leaves. If the tape stop was already on, releasing T turns it off. It is not announced and adds no undo step, and is sent to the host as one gesture so it can be recorded as automation.
+- SHIFT+T switches the tape stop on or off, announcing "Tape stop on" or "Tape stop off". Both keys set the Tape stop parameter in Global, so a latch can also be released from that switch, from host automation or from a MIDI controller.
 
 The glitch stop is not a parameter: it can't be automated or undone, lasts as long as the plugin instance, and is not saved with the session or in presets. The random sequence keeps running while it is on, so reproducible randomness carries on from where it would have been.
 
-Visually it is a row of 16 numbered cells, filled when selected and dimmed when the tap is off, with freeze and glitch indicators beside them. Clicking a cell adds or removes that tap.
+Visually it is a row of 16 numbered cells, filled when selected and dimmed when the tap is off, with freeze, glitch and tape indicators beside them ("Tape: running" or "Tape: stopped", which follows the switch rather than the speed). Clicking a cell adds or removes that tap.

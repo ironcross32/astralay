@@ -5,6 +5,7 @@
 #include "DcBlocker.h"
 #include "Smear.h"
 #include "Tap.h"
+#include "TapeClock.h"
 
 namespace astralay::dsp
 {
@@ -20,6 +21,10 @@ struct GlobalSettings
     float clipCeiling = 0.0f;   // Linear level the output is hard clipped at; 0 doesn't clip.
     float smearAmount = 0.0f;   // 0 to 1.
     float smearSeconds = 0.2f;
+
+    bool tapeStopped = false;
+    float tapeStopSeconds = 0.5f;    // From full speed to stopped.
+    float tapeStartSeconds = 0.25f;  // From stopped to full speed.
 
     GlitchGlobalSettings glitch;
     bool reproducible = false;
@@ -40,6 +45,12 @@ struct TransportInfo
 
 /** The whole signal path: 16 taps, the shared glitch chunk grid, freeze, a DC blocker and smear on
     the combined repeats, dry/wet mix, output gain and the output hard clip.
+
+    Everything up to and including smear runs on a tape whose speed the tape stop brings down to
+    nothing and back. While it is slow the repeats drop in pitch, less and less of the input is
+    recorded onto the slower tape, and every ramp and glide in there takes longer by the same measure; once it has
+    stopped they hold where they are and the input is not recorded. The dry signal, the mix and
+    the output gain are not on the tape.
 */
 class Engine
 {
@@ -56,7 +67,8 @@ public:
 
     /** Call once per block before process(). Aligns the chunk grid to the host's beats when synced,
         and restarts the random sequences on playback starts and timeline jumps when reproducible
-        randomness is on. A missing sample position disables jump detection for that block.
+        randomness is on. A missing sample position disables jump detection for that block. While
+        the tape is slowed the chunk grid stretches with it and is not aligned.
     */
     void setTransport (const TransportInfo& transport);
 
@@ -66,6 +78,7 @@ public:
     void process (const float* inLeft, const float* inRight, float* outLeft, float* outRight, int numSamples) noexcept;
 
     const Tap& getTap (int tapIndex) const { return taps[(size_t) tapIndex]; }
+    const TapeClock& getTape() const noexcept { return tape; }
 
     /** Reports glitches and levels to a diagnostic log, or to none with a null sink. Does nothing
         in builds without diagnostics. Not while audio is running.
@@ -74,6 +87,9 @@ public:
 
 private:
     void restartRandomness (juce::int64 baseSeed);
+
+    /** Runs everything on the tape for one of its samples and returns the smeared repeats. */
+    void processTapeSample (float input, float& wetLeft, float& wetRight) noexcept;
 
     diagnostics::Sink* diagnosticSink = nullptr;
     diagnostics::OutputProbe outputProbe;
@@ -86,6 +102,11 @@ private:
     juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> freeze;
     juce::SmoothedValue<float> dryGain, wetGain, outputGain;
     double sampleRate = 44100.0;
+
+    TapeClock tape;
+    float tapeInputSum = 0.0f;   // The input since the tape's last sample, recorded as its average.
+    int tapeInputCount = 0;
+    float olderLeft = 0.0f, olderRight = 0.0f, newerLeft = 0.0f, newerRight = 0.0f;
 
     int samplesToChunk = 0;
     int formantClock = 0;

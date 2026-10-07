@@ -95,6 +95,11 @@ juce::String helpFor (const juce::String& key)
         { global::mix,         "The balance between the dry input and the repeats. 0% is dry only, 100% is repeats only." },
         { global::outputGain,  "The overall output level." },
 
+        // Global: tape stop
+        { global::tapeStop,      "Slows the repeats to a stop, dropping in pitch like a tape machine switched off. Turning it off brings them back up to speed. The dry input is not affected. Never saved." },
+        { global::tapeStopTime,  "How long the tape takes to slow from full speed to a stop." },
+        { global::tapeStartTime, "How long the tape takes to get from stopped back up to full speed." },
+
         // Macros
         { helpKeys::macroArm,   "While a macro is armed, adjusting another control sets how far the macro moves that control instead of changing it." },
         { helpKeys::macroValue, "Moves every control this macro is set up to move." },

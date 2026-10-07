@@ -10,6 +10,14 @@ namespace
     const juce::Identifier presetNameProperty { "presetName" };
     const juce::Identifier presetModifiedProperty { "presetModified" };
     const juce::Identifier outputClipProperty { "outputClip" };
+
+    /** Takes the parameters that are played rather than set out of a saved state. */
+    void removePerformanceState (juce::ValueTree& tree)
+    {
+        for (int i = tree.getNumChildren(); --i >= 0;)
+            if (astralay::params::isPerformanceState (tree.getChild (i).getProperty ("id").toString()))
+                tree.removeChild (i, nullptr);
+    }
 }
 
 AstralayProcessor::AstralayProcessor (juce::File midiFolder)
@@ -97,6 +105,9 @@ AstralayProcessor::AstralayProcessor (juce::File midiFolder)
     globalParameters.outputGain = get (global::outputGain);
     globalParameters.smearAmount = get (global::smearAmount);
     globalParameters.smearSize  = get (global::smearSize);
+    globalParameters.tapeStop      = get (global::tapeStop);
+    globalParameters.tapeStopTime  = get (global::tapeStopTime);
+    globalParameters.tapeStartTime = get (global::tapeStartTime);
 
     globalParameters.placement    = get (global::placement);
     globalParameters.bufferSize   = get (global::bufferSize);
@@ -631,6 +642,9 @@ void AstralayProcessor::updateEngineSettings (int sampleOffset)
     g.clipCeiling = params::outputClipCeiling (outputClip.load());
     g.smearAmount = load (globalParameters.smearAmount) / 100.0f;
     g.smearSeconds = load (globalParameters.smearSize) / 1000.0f;
+    g.tapeStopped = load (globalParameters.tapeStop) >= 0.5f;
+    g.tapeStopSeconds = load (globalParameters.tapeStopTime) / 1000.0f;
+    g.tapeStartSeconds = load (globalParameters.tapeStartTime) / 1000.0f;
     g.glitch.stopped = glitchesStopped.load();
     g.glitch.outputAndFeedback = (int) load (globalParameters.placement) == (int) params::GlitchPlacement::outputAndFeedback;
     g.glitch.chunkSamples = juce::jmax (1, (int) std::llround (juce::jmin (chunkSamples, params::maxDelaySeconds * sampleRate)));
@@ -757,6 +771,7 @@ juce::AudioProcessorEditor* AstralayProcessor::createEditor()
 void AstralayProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto copy = state.copyState();
+    removePerformanceState (copy);
     copy.setProperty ("version", stateVersion, nullptr);
     copy.setProperty (outputClipProperty, (int) outputClip.load(), nullptr);
     copy.setProperty (presetModifiedProperty, isPresetModified(), nullptr);
@@ -788,12 +803,15 @@ void AstralayProcessor::setStateInformation (const void* data, int sizeInBytes)
     xml->removeChildElement (macrosXml, true);
 
     // replaceState leaves parameters missing from older states at their current values, so start
-    // from defaults: anything absent from the saved state then takes its default value.
+    // from defaults: anything absent from the saved state then takes its default value. That
+    // includes the tape stop, which is never saved, so a session always opens with it off.
     for (auto* parameter : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
             ranged->setValueNotifyingHost (ranged->getDefaultValue());
 
-    state.replaceState (juce::ValueTree::fromXml (*xml));
+    auto restored = juce::ValueTree::fromXml (*xml);
+    removePerformanceState (restored);
+    state.replaceState (restored);
 
     // Sessions saved before the output clip existed get its default.
     const auto clip = (int) state.state.getProperty (outputClipProperty, (int) astralay::params::OutputClip::plus18);

@@ -158,7 +158,9 @@ private:
 
     /** Switches a bool parameter as an undoable edit and announces "<name> on" or "<name> off". */
     void toggleAndAnnounce (const char* parameterId, const juce::String& name);
-    void holdFreeze (bool held);
+
+    /** Switches a bool parameter on while a key is held and off when it is let go. */
+    void holdSwitch (const char* parameterId, bool held);
     void stopGlitches (bool stopped);
 
     /** Handles copy and paste for the focused control. Returns false if the key isn't one of
@@ -258,10 +260,11 @@ private:
     juce::Component::SafePointer<juce::Component> promptFocus;
 
     // Global
-    astralay::ui::AccessibleGroup timingGroup { "Timing" }, engineGroup { "Glitch engine" }, outputGroup { "Output" };
-    std::vector<LayoutItem> timingItems, engineItems, outputItems;
+    astralay::ui::AccessibleGroup timingGroup { "Timing" }, engineGroup { "Glitch engine" }, outputGroup { "Output" },
+                                  tapeStopGroup { "Tape stop" };
+    std::vector<LayoutItem> timingItems, engineItems, outputItems, tapeStopItems;
     astralay::ui::ParameterToggle syncToggle { "Host sync" }, freezeToggle { "Freeze" }, sustainToggle { "Freeze sustain" },
-                                  reproducibleToggle { "Reproducible randomness" };
+                                  reproducibleToggle { "Reproducible randomness" }, tapeStopToggle { "Tape stop" };
     juce::Label placementLabel;
     astralay::ui::ParameterChoice placementChoice;
 
@@ -278,7 +281,7 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
     static constexpr int fromFileItemId = 10000;
 
-    std::unique_ptr<juce::ParameterAttachment> syncWatcher, freezeWatcher;
+    std::unique_ptr<juce::ParameterAttachment> syncWatcher, freezeWatcher, tapeStopWatcher;
     std::vector<std::unique_ptr<juce::ParameterAttachment>> enabledWatchers;
 
     int selectedTap = 0;

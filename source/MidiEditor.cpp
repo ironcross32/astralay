@@ -74,6 +74,7 @@ juce::String AstralayEditor::midiTarget (juce::Component* control) const
     if (control == &freezeToggle) return global::freeze;
     if (control == &sustainToggle) return global::freezeSustain;
     if (control == &reproducibleToggle) return global::reproducible;
+    if (control == &tapeStopToggle) return global::tapeStop;
     if (control == &placementChoice) return global::placement;
     return {};
 }
@@ -94,7 +95,7 @@ void AstralayEditor::setupMidiControls()
     };
     for (auto& row : sliderRows) configure (row->slider);
     for (auto& macro : macroControls) { configure (macro->value); configure (macro->arm); }
-    for (auto* toggle : { &tapEnabled, &syncToggle, &freezeToggle, &sustainToggle, &reproducibleToggle }) configure (*toggle);
+    for (auto* toggle : { &tapEnabled, &syncToggle, &freezeToggle, &sustainToggle, &reproducibleToggle, &tapeStopToggle }) configure (*toggle);
     configure (placementChoice);
     configure (tapSelector);
     configure (presetName);

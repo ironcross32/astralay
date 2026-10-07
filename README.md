@@ -126,10 +126,27 @@ The Performance group holds a single control, the performance area. While it has
 | Switch freeze on or off | Shift+F |
 | Stop all glitches while held | G |
 | Switch all glitches off or on | Shift+G |
+| Stop the tape while held | T |
+| Switch the tape stop on or off | Shift+T |
 
-The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move. The arrows, the held freeze and the held glitch stop are not announced.
+The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move. The arrows, the held freeze, the held glitch stop and the held tape stop are not announced.
 
 Stopping the glitches affects every tap, whatever the selection. New glitches don't start and running ones fade out quickly, but glitched audio already going round a feedback loop stays in it. Pressing G after switching the glitches off with Shift+G switches them back on when you let go. The glitch stop can't be automated and isn't saved with your project.
+
+### Tape stop
+
+The tape stop slows the repeats to a halt, dropping in pitch like a tape machine being switched off, and brings them back up to speed when you turn it off. It works on the repeats only and leaves the dry signal alone, so turn Mix up to 100% for the full effect.
+
+Hold T in the performance area to stop the tape for as long as the key is down, or press Shift+T to switch the stop on and leave it on. If you let go before the tape has stopped, it speeds back up from wherever it had got to. Pressing T after switching the stop on with Shift+T switches it off when you let go.
+
+The **Tape stop** group in Global holds the same switch and two settings:
+
+- **Stop time** is how long the tape takes to slow from full speed to a stop, from 50 ms to 2 s.
+- **Start time** is how long it takes to get back up to full speed, from 50 ms to 2 s.
+
+What you play while the tape is slowing is still recorded, and comes back a little higher in pitch once the tape is at speed. The slower the tape, the less of it is recorded, and from half speed down nothing is, so those repeats return as a brief, quiet rise in pitch and not as a squeal. Audio already in the delay is unaffected. Everything in the delay holds where it stopped, including a frozen loop and any change you make to a tap, and carries on from there.
+
+The switch and both times can be automated and MIDI learned. With a MIDI controller, the upper half of its range stops the tape and the lower half lets it go, which also releases a stop you switched on from the keyboard. The times are saved with presets and projects. The switch itself is never saved, so a project always opens with the tape running, and loading a preset leaves it as it is. Switching it can't be undone.
 
 ### Help tags
 

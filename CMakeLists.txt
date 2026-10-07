@@ -157,6 +157,7 @@ if(ASTRALAY_BUILD_TESTS)
             tests/MidiTests.cpp
             tests/Benchmark.cpp
             tests/DiagnosticsTests.cpp
+            tests/TapeStopTests.cpp
             source/PluginProcessor.cpp
             source/PluginEditor.cpp
             source/MidiEditor.cpp

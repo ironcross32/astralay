@@ -148,6 +148,10 @@ AstralayEditor::AstralayEditor (AstralayProcessor& p)
                                                                  [this] (float v) { performancePad.setFrozen (v >= 0.5f); });
     freezeWatcher->sendInitialUpdate();
 
+    tapeStopWatcher = std::make_unique<juce::ParameterAttachment> (*state.getParameter (params::global::tapeStop),
+                                                                   [this] (float v) { performancePad.setTapeStopped (v >= 0.5f); });
+    tapeStopWatcher->sendInitialUpdate();
+
     for (int t = 0; t < params::numTaps; ++t)
     {
         auto* enabled = state.getParameter (params::tapId (t, params::tap::enabled));
@@ -329,7 +333,7 @@ void AstralayEditor::buildGlobalGroup()
 {
     using namespace params::global;
 
-    for (auto* group : { &timingGroup, &engineGroup, &outputGroup })
+    for (auto* group : { &timingGroup, &engineGroup, &outputGroup, &tapeStopGroup })
         globalGroup.addInOrder (*group);
 
     addToggle (timingGroup, timingItems, syncToggle, sync);
@@ -355,6 +359,10 @@ void AstralayEditor::buildGlobalGroup()
     addSliderRow (outputGroup, outputItems, "Mix", mix, nullptr, false);
     auto& gain = addSliderRow (outputGroup, outputItems, "Output gain", outputGain, nullptr, false).slider;
     gain.setContextMenu ([this, &gain] { showOutputClipMenu (gain); });
+
+    addToggle (tapeStopGroup, tapeStopItems, tapeStopToggle, tapeStop);
+    addSliderRow (tapeStopGroup, tapeStopItems, "Stop time", tapeStopTime, nullptr, false);
+    addSliderRow (tapeStopGroup, tapeStopItems, "Start time", tapeStartTime, nullptr, false);
 }
 
 void AstralayEditor::buildPerformanceGroup()
@@ -365,8 +373,10 @@ void AstralayEditor::buildPerformanceGroup()
     performancePad.onSelectionChanged = [this] (juce::uint32 selection) { processor.setPerformanceSelection (selection); };
     performancePad.onStepTimes = [this] (int direction, bool continuing) { processor.stepSelectedTapTimes (direction, continuing); };
     performancePad.onStepSmear = [this] (bool amount, int direction, bool continuing) { processor.stepSmear (amount, direction, continuing); };
-    performancePad.onHoldFreeze = [this] (bool held) { holdFreeze (held); };
+    performancePad.onHoldFreeze = [this] (bool held) { holdSwitch (params::global::freeze, held); };
     performancePad.onToggleFreeze = [this] { toggleAndAnnounce (params::global::freeze, "Freeze"); };
+    performancePad.onHoldTapeStop = [this] (bool held) { holdSwitch (params::global::tapeStop, held); };
+    performancePad.onToggleTapeStop = [this] { toggleAndAnnounce (params::global::tapeStop, "Tape stop"); };
 
     performancePad.setGlitchesStopped (processor.areGlitchesStopped());
     performancePad.onHoldGlitchStop = [this] (bool held) { stopGlitches (held); };
@@ -987,21 +997,21 @@ void AstralayEditor::toggleAndAnnounce (const char* parameterId, const juce::Str
     announce (name + (on ? " on" : " off"));
 }
 
-void AstralayEditor::holdFreeze (bool held)
+void AstralayEditor::holdSwitch (const char* parameterId, bool held)
 {
     // One gesture from press to release, so the host can record it, kept out of the undo history.
     const astralay::state::History::ScopedSuspend suspend (processor.getHistory());
-    auto* freeze = state.getParameter (params::global::freeze);
+    auto* parameter = state.getParameter (parameterId);
 
     if (held)
     {
-        freeze->beginChangeGesture();
-        freeze->setValueNotifyingHost (1.0f);
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (1.0f);
     }
     else
     {
-        freeze->setValueNotifyingHost (0.0f);
-        freeze->endChangeGesture();
+        parameter->setValueNotifyingHost (0.0f);
+        parameter->endChangeGesture();
     }
 }
 
@@ -1439,18 +1449,20 @@ void AstralayEditor::resized()
         }
     }
 
-    // Global: the three sub-groups stacked.
+    // Global: the four sub-groups stacked, in rows the height of the glitch sections' to fit.
     {
+        constexpr int spacing = 4;
         auto inner = globalGroup.getContentBounds();
-        const auto groupHeight = [] (size_t rows) { return 8 + (int) headingHeight + 6 + (int) rows * (rowHeight + 5) + 8; };
+        const auto groupHeight = [] (size_t rows) { return 8 + (int) headingHeight + 6 + (int) rows * (glitchRowHeight + spacing) + 8; };
 
         for (auto [group, items] : { std::pair { &timingGroup, &timingItems },
                                      std::pair { &engineGroup, &engineItems },
-                                     std::pair { &outputGroup, &outputItems } })
+                                     std::pair { &outputGroup, &outputItems },
+                                     std::pair { &tapeStopGroup, &tapeStopItems } })
         {
             group->setBounds (inner.removeFromTop (groupHeight (items->size())));
             inner.removeFromTop (8);
-            layoutColumn (group->getContentBounds(), *items, rowHeight, 5, 0.42f);
+            layoutColumn (group->getContentBounds(), *items, glitchRowHeight, spacing, 0.42f);
         }
     }
 

@@ -9,11 +9,12 @@ namespace
     const juce::Identifier rootTag { "AstralayPreset" };
     const juce::Identifier parameterTag { "Parameter" };
 
+    /** Every parameter a preset holds, which leaves out those that are played rather than set. */
     template <typename Callback>
     void forEachParameter (const juce::AudioProcessor& processor, Callback&& callback)
     {
         for (auto* parameter : processor.getParameters())
-            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter); ranged != nullptr && ! params::isPerformanceState (ranged->paramID))
                 callback (*ranged);
     }
 

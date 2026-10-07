@@ -198,6 +198,9 @@ private:
         std::atomic<float>* outputGain = nullptr;
         std::atomic<float>* smearAmount = nullptr;
         std::atomic<float>* smearSize = nullptr;
+        std::atomic<float>* tapeStop = nullptr;
+        std::atomic<float>* tapeStopTime = nullptr;
+        std::atomic<float>* tapeStartTime = nullptr;
 
         std::atomic<float>* placement = nullptr;
         std::atomic<float>* bufferSize = nullptr;

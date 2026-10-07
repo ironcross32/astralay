@@ -34,6 +34,7 @@ MidiMappings::MidiMappings (juce::AudioProcessorValueTreeState& state, History& 
     : history (h), directory (std::move (folderToUse))
 {
     sync = state.getParameter (params::global::sync);
+    tapeStop = state.getParameter (params::global::tapeStop);
     for (auto* p : state.processor.getParameters())
     {
         auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (p);
@@ -104,6 +105,7 @@ bool MidiMappings::writeValue (juce::RangedAudioParameter* parameter, float valu
     if (parameter->getValue() == snapped) return false; // Always deliver exact endpoints.
     const juce::ScopedValueSetter<juce::AudioProcessorParameter*> writing (midiWriter, parameter);
     parameter->setValueNotifyingHost (snapped);
+    if (parameter == tapeStop) return false; // Played, not set: it is no part of the preset.
     soundChanged.store (true);
     return true;
 }

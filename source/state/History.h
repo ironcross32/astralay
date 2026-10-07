@@ -13,6 +13,8 @@ namespace astralay::state
     choice), so host automation, which doesn't send gestures, never enters the history. A run of
     edits to the same parameter in quick succession, such as repeated arrow presses, merges into
     one step. Whole-state changes such as preset loads are recorded with recordStateChange().
+    Parameters that are played rather than set (see params::isPerformanceState) are left out of
+    all of it: their edits aren't recorded, and snapshots neither hold nor change them.
 
     Lives in the processor so the history survives the editor being closed. Message thread only,
     apart from the gesture callbacks, which are forwarded to it.

@@ -22,14 +22,14 @@ namespace
     }
 
     std::unique_ptr<juce::AudioParameterFloat> makeFloat (const juce::String& id, const juce::String& name,
-                                                          Range range, float defaultValue, Unit unit)
+                                                          Range range, float defaultValue, Unit unit, int version = 1)
     {
         auto attributes = juce::AudioParameterFloatAttributes()
                               .withStringFromValueFunction ([unit] (float v, int) { return Units::format (unit, v, volumeFloorDb); })
                               .withValueFromStringFunction ([unit, defaultValue] (const juce::String& text)
                                                             { return Units::parse (unit, text, volumeFloorDb).value_or (defaultValue); });
 
-        return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, 1 }, name, range, defaultValue, attributes);
+        return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, version }, name, range, defaultValue, attributes);
     }
 
     std::unique_ptr<juce::AudioParameterInt> makeInt (const juce::String& id, const juce::String& name,
@@ -328,6 +328,8 @@ Unit unitFor (const juce::String& id)
         { global::smearSize,   Unit::milliseconds },
         { global::mix,         Unit::percent },
         { global::outputGain,  Unit::decibels },
+        { global::tapeStopTime,  Unit::milliseconds },
+        { global::tapeStartTime, Unit::milliseconds },
     };
 
     const auto it = units.find (id);
@@ -392,6 +394,11 @@ juce::String modulationTarget (const juce::String& id)
                 return id.substring (0, 4) + unsynced;
 
     return canModulate (id) ? id : juce::String();
+}
+
+bool isPerformanceState (const juce::String& id)
+{
+    return id == global::tapeStop;
 }
 
 bool canModulate (const juce::String& id)
@@ -484,6 +491,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     // Append new parameters so every existing host parameter index remains stable. The editor
     // places this beside Freeze in Global/Timing; version 2 also preserves AU automation order.
     layout.add (makeBool (global::freezeSustain, "Freeze Sustain", false, 2));
+
+    // The editor places these in Global, in a group of their own.
+    const auto tapeTime = [] (const char* id, const char* name, float defaultValue)
+    {
+        return makeFloat (id, name, skewed (50.0f, 2000.0f, 400.0f), defaultValue, unitFor (id), 3);
+    };
+
+    auto tape = makeGroup ("tapeStopGroup", "Tape stop");
+    tape->addChild (makeBool (global::tapeStop, "Tape Stop", false, 3),
+                    tapeTime (global::tapeStopTime, "Stop Time", 500.0f),
+                    tapeTime (global::tapeStartTime, "Start Time", 250.0f));
+    layout.add (std::move (tape));
     return layout;
 }
 

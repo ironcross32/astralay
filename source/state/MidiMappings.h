@@ -113,6 +113,7 @@ private:
     History& history;
     mutable juce::CriticalSection mappingLock; // UI/state only; never acquired by process().
     juce::RangedAudioParameter* sync = nullptr;
+    juce::RangedAudioParameter* tapeStop = nullptr;
     std::deque<Target> targets;
     std::vector<int> activeSources, scratchSources; // Allocated once, used only by the audio thread.
     std::atomic<uint64_t> routeRevision { 2 };

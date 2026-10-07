@@ -74,6 +74,12 @@ void PerformancePad::setGlitchesStopped (bool shouldBeStopped)
     repaint();
 }
 
+void PerformancePad::setTapeStopped (bool shouldBeStopped)
+{
+    tapeStopped = shouldBeStopped;
+    repaint();
+}
+
 void PerformancePad::changeSelection (juce::uint32 newSelection, const juce::String& announcement)
 {
     setSelection (newSelection);
@@ -197,6 +203,30 @@ bool PerformancePad::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
+    if (code == 'T' || code == 't')
+    {
+        if (heldTapeKey != 0)
+            return true;
+
+        heldTapeKey = code;
+        startTimerHz (30);
+
+        if (mods.isShiftDown())
+        {
+            if (onToggleTapeStop != nullptr)
+                onToggleTapeStop();
+        }
+        else
+        {
+            holdingTapeStop = true;
+
+            if (onHoldTapeStop != nullptr)
+                onHoldTapeStop (true);
+        }
+
+        return true;
+    }
+
     return false;
 }
 
@@ -223,7 +253,10 @@ void PerformancePad::updateHeldKeys()
     if (heldGlitchKey != 0 && ! juce::KeyPress::isKeyCurrentlyDown (heldGlitchKey))
         releaseGlitchKey();
 
-    if (heldArrow == 0 && heldFreezeKey == 0 && heldGlitchKey == 0)
+    if (heldTapeKey != 0 && ! juce::KeyPress::isKeyCurrentlyDown (heldTapeKey))
+        releaseTapeKey();
+
+    if (heldArrow == 0 && heldFreezeKey == 0 && heldGlitchKey == 0 && heldTapeKey == 0)
         stopTimer();
 }
 
@@ -243,12 +276,21 @@ void PerformancePad::releaseGlitchKey()
         onHoldGlitchStop (false);
 }
 
+void PerformancePad::releaseTapeKey()
+{
+    heldTapeKey = 0;
+
+    if (std::exchange (holdingTapeStop, false) && onHoldTapeStop != nullptr)
+        onHoldTapeStop (false);
+}
+
 void PerformancePad::releaseHeldKeys()
 {
     heldArrow = 0;
     stopTimer();
     releaseFreezeKey();
     releaseGlitchKey();
+    releaseTapeKey();
 }
 
 void PerformancePad::focusLost (FocusChangeType)
@@ -302,14 +344,19 @@ void PerformancePad::paint (juce::Graphics& g)
         g.drawText (juce::String (t + 1), cell, juce::Justification::centred);
     }
 
+    // Three lines, in type small enough for each to have one.
     auto status = getLocalBounds().removeFromRight (statusWidth);
+    const auto lineHeight = status.getHeight() / 3;
+    g.setFont (juce::Font (juce::FontOptions (juce::jmin (sizes::textHeight, (float) lineHeight))));
 
     g.setColour (frozen ? colours::accent : colours::dimText);
-    g.drawText (frozen ? "Freeze: on" : "Freeze: off", status.removeFromTop (status.getHeight() / 2),
-                juce::Justification::centred);
+    g.drawText (frozen ? "Freeze: on" : "Freeze: off", status.removeFromTop (lineHeight), juce::Justification::centred);
 
     g.setColour (glitchesStopped ? colours::accent : colours::dimText);
-    g.drawText (glitchesStopped ? "Glitches: off" : "Glitches: on", status, juce::Justification::centred);
+    g.drawText (glitchesStopped ? "Glitches: off" : "Glitches: on", status.removeFromTop (lineHeight), juce::Justification::centred);
+
+    g.setColour (tapeStopped ? colours::accent : colours::dimText);
+    g.drawText (tapeStopped ? "Tape: stopped" : "Tape: running", status, juce::Justification::centred);
 }
 
 std::unique_ptr<juce::AccessibilityHandler> PerformancePad::createAccessibilityHandler()

@@ -17,10 +17,11 @@ int tapIndexForKey (const juce::KeyPress& key);
     between even and odd), the up and down arrows lengthen and shorten those taps' times, the left
     and right arrows change the smear size (the smear amount with Shift), F freezes while held and
     Shift+F switches freeze on or off. G stops the glitches while held and Shift+G switches them
-    off or on. Changes to the selection are announced; the arrows and the held keys are silent.
+    off or on. T stops the tape while held and Shift+T switches the tape stop on or off. Changes
+    to the selection are announced; the arrows and the held keys are silent.
 
-    It shows a cell per tap, which can also be clicked, whether freeze is on and whether the
-    glitches are off. It owns no plugin
+    It shows a cell per tap, which can also be clicked, whether freeze is on, whether the
+    glitches are off and whether the tape is stopped. It owns no plugin
     state: the owner supplies the selection and carries out what the callbacks ask for.
 */
 class PerformancePad final : public MenuControl<juce::Component>,
@@ -53,14 +54,20 @@ public:
 
     std::function<void()> onToggleGlitchStop;
 
+    /** Called with true when T goes down and false when it is released or focus leaves. */
+    std::function<void (bool held)> onHoldTapeStop;
+
+    std::function<void()> onToggleTapeStop;
+
     void setSelection (juce::uint32 newSelection);
     juce::uint32 getSelection() const noexcept { return selection; }
 
     void setTapEnabled (int tapIndex, bool enabled);
     void setFrozen (bool shouldBeFrozen);
     void setGlitchesStopped (bool shouldBeStopped);
+    void setTapeStopped (bool shouldBeStopped);
 
-    /** Lets go of a held freeze and a held glitch stop. */
+    /** Lets go of a held freeze, a held glitch stop and a held tape stop. */
     void releaseHeldKeys();
 
     void paint (juce::Graphics&) override;
@@ -77,12 +84,14 @@ private:
     void updateHeldKeys();
     void releaseFreezeKey();
     void releaseGlitchKey();
+    void releaseTapeKey();
     void timerCallback() override;
 
     juce::uint32 selection = 0;
     juce::uint32 enabledTaps = 0;
     bool frozen = false;
     bool glitchesStopped = false;
+    bool tapeStopped = false;
 
     // Key codes of the keys being held, or 0.
     int heldArrow = 0;
@@ -91,6 +100,8 @@ private:
     bool holdingFreeze = false;
     int heldGlitchKey = 0;
     bool holdingGlitchStop = false;
+    int heldTapeKey = 0;
+    bool holdingTapeStop = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PerformancePad)
 };

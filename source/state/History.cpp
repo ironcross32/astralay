@@ -1,4 +1,5 @@
 #include "History.h"
+#include "params/Parameters.h"
 
 namespace astralay::state
 {
@@ -145,13 +146,17 @@ void History::gestureEnded (int parameterIndex, float before, float after)
     if (juce::approximatelyEqual (before, after))
         return;
 
+    const auto* parameter = processor.getParameters()[parameterIndex];
+    const auto* withId = dynamic_cast<const juce::AudioProcessorParameterWithID*> (parameter);
+
+    if (withId != nullptr && params::isPerformanceState (withId->paramID))
+        return;
+
     const auto now = juce::Time::getMillisecondCounter();
     const auto merge = parameterIndex == lastParameter && now - lastEditTime <= mergeWindowMs;
 
     if (! merge)
     {
-        const auto* parameter = processor.getParameters()[parameterIndex];
-        const auto* withId = dynamic_cast<const juce::AudioProcessorParameterWithID*> (parameter);
         undoManager.beginNewTransaction (parameterPrefix + (withId != nullptr ? withId->paramID : juce::String()));
     }
 
@@ -172,7 +177,7 @@ History::Snapshot History::capture (const juce::String& presetName, bool modifie
     snapshot.modified = modified;
 
     for (auto* parameter : processor.getParameters())
-        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameter))
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameter); withId != nullptr && ! params::isPerformanceState (withId->paramID))
             snapshot.values[withId->paramID] = parameter->getValue();
 
     return snapshot;
@@ -226,7 +231,7 @@ void History::applySnapshot (const Snapshot& snapshot)
 
         for (auto* parameter : processor.getParameters())
         {
-            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameter))
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameter); withId != nullptr && ! params::isPerformanceState (withId->paramID))
             {
                 const auto found = snapshot.values.find (withId->paramID);
                 const auto value = found != snapshot.values.end() ? found->second : parameter->getDefaultValue();

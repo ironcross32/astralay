@@ -71,10 +71,10 @@ public:
                 titles.add (titleOf (*c));
 
             // Main 7, tap 2 + 6 basics + 33 glitch controls (synced stutter slices share rows), two for
-            // each of the 8 macros, global 16, performance 1.
-            expectEquals ((int) stops.size(), 80);
+            // each of the 8 macros, global 19, performance 1.
+            expectEquals ((int) stops.size(), 83);
 
-            if (stops.size() != 80)
+            if (stops.size() != 83)
                 logMessage ("Tab order: " + titles.joinIntoString (" | "));
 
             const juce::StringArray expectedStart { "Main menu", "MIDI learn", "Undo", "Redo", "Save", "Load", "Preset: Init",
@@ -92,6 +92,7 @@ public:
                                                   "Maximum Simultaneous Glitches", "Minimum Glitch Length",
                                                   "Maximum Glitch Length", "Reproducible Randomness", "Seed",
                                                   "Smear Amount", "Smear Size", "Mix", "Output Gain",
+                                                  "Tape Stop", "Stop Time", "Start Time",
                                                   "Performance area" };
 
             for (int i = 0; i < expectedEnd.size(); ++i)
@@ -708,6 +709,29 @@ public:
                 pad->keyPressed (juce::KeyPress ('g', shift, 'G'));
                 release();
                 expect (! processor.areGlitchesStopped());
+
+                // T stops the tape while held, without an undo step; from a latched stop it ends off.
+                processor.getHistory().clear();
+                pad->keyPressed (juce::KeyPress ('t'));
+                expect (valueOf (processor, global::tapeStop) >= 0.5f);
+                release();
+                expect (valueOf (processor, global::tapeStop) < 0.5f);
+
+                pad->keyPressed (juce::KeyPress ('t', shift, 'T'));
+                release();
+                expect (valueOf (processor, global::tapeStop) >= 0.5f);
+
+                pad->keyPressed (juce::KeyPress ('t'));
+                expect (valueOf (processor, global::tapeStop) >= 0.5f);
+                release();
+                expect (valueOf (processor, global::tapeStop) < 0.5f);
+
+                pad->keyPressed (juce::KeyPress ('t', shift, 'T'));
+                release();
+                pad->keyPressed (juce::KeyPress ('t', shift, 'T'));
+                release();
+                expect (valueOf (processor, global::tapeStop) < 0.5f);
+                expect (! processor.getHistory().canUndo());
 
                 // The selection outlives the editor window.
                 pad->keyPressed (juce::KeyPress ('4'));

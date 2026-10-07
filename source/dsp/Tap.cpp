@@ -15,9 +15,11 @@ namespace
 void Tap::prepare (double newSampleRate, int maxDelaySamples, int tapIndex)
 {
     sampleRate = newSampleRate;
-    line.prepare (maxDelaySamples);
-    glitches.prepare (sampleRate, (double) maxDelaySamples / sampleRate, tapIndex);
     freezeSustain.prepare (sampleRate, maxDelaySamples);
+    // Room behind the longest loop for the audio freeze sustain fades its recording into.
+    line.prepare (maxDelaySamples + freezeSustain.getSeamSamples());
+    maxDelay = (float) maxDelaySamples;
+    glitches.prepare (sampleRate, (double) maxDelaySamples / sampleRate, tapIndex);
 
     const juce::dsp::ProcessSpec spec { sampleRate, 1, 1 };
 

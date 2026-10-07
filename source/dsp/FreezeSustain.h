@@ -14,6 +14,10 @@ namespace astralay::dsp
     is allocated in prepare, and reset only invalidates it. Pitch/formant metadata is stored at
     the same coarse resolution as the chain's loop tracks.
 
+    The loop is cut out of a line that was still taking new input, so its last sample doesn't lead
+    into its first. The recording's last few milliseconds fade into the audio that came just before
+    its start, which does. Without that, each trip round the recording restores a click.
+
     Recovery crossfades toward the recording as the processed signal falls below 70% of the
     recording's RMS. It never amplifies either signal. The reference cannot erode, and DC is
     excluded from both the level comparison and the restored audio.
@@ -33,8 +37,12 @@ public:
         audio.resize ((size_t) maxSamples);
         states.resize ((size_t) ((maxSamples + stateStep - 1) / stateStep));
         fadeCoefficient = 1.0 - std::exp (-1.0 / (0.05 * sampleRate));
+        seamSamples = juce::roundToInt (0.005 * sampleRate);
         reset();
     }
+
+    /** How much audio older than the loop the delay line must hold for the recording's seam. */
+    int getSeamSamples() const noexcept { return seamSamples; }
 
     void reset() noexcept
     {
@@ -57,17 +65,35 @@ public:
                 return {};
 
             length = juce::jlimit (2, (int) audio.size(), (int) std::round (delay));
+            seam = juce::jlimit (0, length / 2, juce::jmin (seamSamples, (int) line.getMaxDelay() - length));
             // At least one loop, so pauses within long recordings aren't treated as erosion.
             measureCoefficient = 1.0 - std::exp (-1.0 / juce::jmax (0.05 * sampleRate, (double) length));
         }
 
         if (captured < length)
         {
-            const auto value = line.read ((double) length);
+            auto value = line.read ((double) length);
             if (isNonFinite (value))
             {
                 reset();
                 return {};
+            }
+
+            // The audio just before the recording goes where the end will be, to be faded into.
+            if (captured < seam)
+            {
+                const auto before = line.read ((double) (length + seam));
+                if (isNonFinite (before))
+                {
+                    reset();
+                    return {};
+                }
+
+                audio[(size_t) (length - seam + captured)] = before;
+            }
+            else if (const auto into = captured - (length - seam); into >= 0)
+            {
+                value += (float) (into + 1) / (float) (seam + 1) * (audio[(size_t) captured] - value);
             }
 
             audio[(size_t) captured] = value;
@@ -136,7 +162,7 @@ private:
     static constexpr int stateStep = 16;
     std::vector<float> audio;
     std::vector<GlitchChain::LoopState> states;
-    int length = 0, captured = 0;
+    int length = 0, captured = 0, seam = 0, seamSamples = 0;
     double sampleRate = 48000.0, position = 0.0, amount = 0.0;
     double sum = 0.0, squares = 0.0, referenceMean = 0.0, referencePower = 0.0;
     double measuredMean = 0.0, measuredSquares = 0.0, measureCoefficient = 0.0, fadeCoefficient = 0.0;

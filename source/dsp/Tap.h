@@ -72,13 +72,13 @@ private:
 
     float scaledDelay() const noexcept
     {
-        return juce::jlimit (DelayLine::minDelaySamples, line.getMaxDelay(), baseDelay * delayScale);
+        return juce::jlimit (DelayLine::minDelaySamples, maxDelay, baseDelay * delayScale);
     }
 
     DelayLine line;
     GlitchChain glitches;
     FreezeSustain freezeSustain;
-    float baseDelay = 0.0f, delayScale = 1.0f;
+    float baseDelay = 0.0f, delayScale = 1.0f, maxDelay = 0.0f;
     bool glitchesHeard = false;
     juce::dsp::StateVariableTPTFilter<float> lowCut, highCut;
 

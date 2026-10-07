@@ -78,6 +78,46 @@ public:
             expect (std::sqrt (squares / length) > 0.03);
         }
 
+        beginTest ("The recording's end leads into its start without a step");
+        {
+            // The loop is caught at full length too, where the line has to hold a little extra.
+            for (const int length : { 96, 1920, 4800 })
+            {
+                Tap tap;
+                tap.prepare (48000.0, 4800);
+                TapSettings settings;
+                settings.enabled = true;
+                settings.feedback = 0.0f;
+                settings.delaySamples = (float) length;
+                settings.glitch.bits = { 1.0f, 1.0f };
+                settings.glitch.probability[(size_t) GlitchType::bitCrusher] = 1.0f;
+                GlitchGlobalSettings global;
+                global.threshold = 1.0f;
+                global.chunkSamples = 256;
+                tap.setSettings (settings, 0.0f, global);
+                tap.reset();
+
+                // The crusher wears the loop away, so what is left to hear is the recording. With
+                // glitches kept out of the output, the tap's output is the loop one trip earlier.
+                float step = 0.0f, last = 0.0f;
+                for (int i = 0; i < 480000; ++i)
+                {
+                    const auto frozen = i >= 24000;
+                    if (i % 256 == 0)
+                        tap.onChunkBoundary (frozen ? 1.0f : 0.0f);
+                    float left = 0.0f, right = 0.0f;
+                    tap.process (0.1f * std::sin ((float) i * 0.05f), frozen ? 1.0f : 0.0f, left, right, true);
+                    if (i >= 240000)
+                        step = juce::jmax (step, std::abs (left - last));
+                    last = left;
+                    if (i % 256 == 255)
+                        tap.endBlock();
+                }
+                expect (step > 0.0f, "Nothing was restored");
+                expect (step < 0.02f, "The restored loop steps by " + juce::String (step));
+            }
+        }
+
         beginTest ("Silent and DC-only captures never create audio");
         {
             for (const auto dc : { 0.0f, 0.2f })

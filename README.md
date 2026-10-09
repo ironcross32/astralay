@@ -250,6 +250,16 @@ The built plugins are in `build/Astralay_artefacts/Release/`, in the `VST3`, `CL
 
 To check the AU on macOS, run `auval -v aufx Alay Ilbs`. If a host doesn't show Astralay after you replace a broken copy, clear its plugin cache and re-scan. In Reaper, that's Preferences, Plug-ins, VST, "Clear cache/re-scan".
 
+### macOS installer
+
+After a build, `installer/mac/build-pkg.sh` packages all four formats into `build/installer/Astralay-<version>-macOS.pkg`. It takes the build folder and configuration as optional arguments (`build` and `Release` by default), and needs only the tools that come with macOS.
+
+The installer lets you choose which formats to install and puts them where every user of the Mac can reach them, so it asks for an administrator password: the plugins go in the folders under `/Library/Audio/Plug-Ins` and the standalone in `/Applications`. It replaces any copy already there. It doesn't touch copies in your own `~/Library/Audio/Plug-Ins`; remove those so the host doesn't find two.
+
+The installer isn't signed with a Developer ID or notarised, so macOS refuses to open a downloaded copy. Either run `xattr -c Astralay-<version>-macOS.pkg` first, or try to open it and then choose "Open Anyway" under Privacy & Security in System Settings. The plugins it installs need nothing further.
+
+To uninstall, delete `Astralay.vst3`, `Astralay.component` and `Astralay.clap` from the folders under `/Library/Audio/Plug-Ins`, and `Astralay.app` from `/Applications`.
+
 ## Testing
 
 The build also produces a test program, `AstralayTests`, which checks the audio processing, glitches, formant shifting, smear, parameters, presets, undo, and the accessibility of the interface (tab order, names, groups, help tags and keyboard handling):

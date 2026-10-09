@@ -1,0 +1,42 @@
+Astralay: installing by hand
+
+This ZIP holds the VST3 plugin for Windows and macOS and the Audio Unit for macOS, for anyone who
+would rather not run an installer. The installers on the same release page also offer the CLAP
+plugin and the standalone application.
+
+Windows
+
+Copy the Astralay.vst3 folder from the Windows folder to:
+
+    C:\Program Files\Common Files\VST3
+
+Copy the whole folder, not just the file inside it. Replace any copy already there.
+
+macOS
+
+Copy from the macOS folder:
+
+    Astralay.vst3       to  /Library/Audio/Plug-Ins/VST3
+    Astralay.component  to  /Library/Audio/Plug-Ins/Components
+
+To install for yourself only, use the same folders under Library in your home folder instead.
+Create the folders if they don't exist, and replace any copy already there.
+
+The plugins aren't signed with a Developer ID or notarised, so macOS blocks copies that came from
+a download until their quarantine flag is cleared. After copying, run this in Terminal for each
+one, with its own path:
+
+    xattr -cr /Library/Audio/Plug-Ins/VST3/Astralay.vst3
+    xattr -cr /Library/Audio/Plug-Ins/Components/Astralay.component
+
+If a host doesn't show the Audio Unit straight away, log out and back in, or restart the Mac.
+
+Then
+
+Have your host re-scan its plugins if Astralay doesn't appear.
+
+Licences
+
+Astralay is distributed under the GNU Affero General Public License version 3. See LICENSE.txt,
+LICENSE-AGPL-3.0.txt and THIRD_PARTY_NOTICES.md in this ZIP. The source code is available from
+https://github.com/ironcross32/astralay.

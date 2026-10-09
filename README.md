@@ -1,10 +1,10 @@
 # Astralay
 
-Astralay is a multi-tap delay and glitch generator, built to be fully usable with a screen reader. It comes as a VST3, CLAP and AU plugin, and as a standalone application, for Windows and macOS.
+Astralay is a screen-reader-first multi-tap delay and glitch generator. It comes as a VST3, CLAP and AU plugin, and as a standalone application for Windows and macOS.
 
 ## Features
 
-- Up to 16 delay taps, each with their own time, volume, pan, feedback, and low and high cut filters in the feedback path.
+- Up to 16 delay taps, each with their own time, volume, pan, feedback, and filters in the feedback path.
 - Nine glitch types per tap, each firing at random with their own probability and each setting is randomized from ranges you set:
     - reverse
     - stutter
@@ -16,16 +16,19 @@ Astralay is a multi-tap delay and glitch generator, built to be fully usable wit
     - frequency modulation
     - bit crusher
 - A shared glitch grid, which can follow the host's tempo, with shared glitch lengths and a limit on how many glitches run at once.
-- Formant glitches briefly keep the original signal while preparing, then fade in over 5 ms. Preparation takes up to about 6 ms at common sample rates, spreading processing work to reduce CPU spikes. Very short formant glitches can sound weaker.
-- Reproducible randomness: playback starts restart the glitch sequence from your seed. Seeks and loop wraps also restart it when the host supplies sample positions. A host that skips stopped callbacks must report a position jump or prepare the plugin again for a restart to be detected.
-- Host sync, tape-style glide when times change, freeze, smear (diffusion), dry/wet mix, output gain and an output clip.
-- Eight macros, each moving any number of controls at once from a single value you can automate.
+- Reproducible randomness: Glitches follow a pattern set by the seed you enter.
+- Eight macros, each moving any number of controls at once from a single value you can automate or control via MIDI.
 - MIDI CC and pitch-bend learn, with reusable mappings and project-state recall.
-- Presets, factory presets, and undo and redo.
 
 ## Usage
 
-Controls are arranged in five groups: Main, Tap *number*, Macros, Global, and Performance. Main houses things like undo and redo, and preset management. The Tap *number* group contains a tap selector, as well as every control for the selected tap. The group is renamed so that *number* represents what tap you're working with. For example, "Tap 3". Macros holds the eight macros. Everything that affects the sound as a whole lives in global.
+The most basic setup is to place Astralay on an armed track that accepts audio input or a track with audio already on it. Once done, you can adjust the taps to taste, bring in glitches, freeze the audio, crank up the wet, bring in a bit more smear or whatever suits your fancy.
+
+There are two ways to set things up if you want MIDI as well. You can either send MIDI from another track to Astralay, or you can put Astralay on a MIDI track and send audio to the first stereo pair, it's your choice. Press ALT+L (CMD+L on Mac) while focused on a control to begin the MIDI learn process, then move a fader or encoder on your controller/ All MIDI CCs are included, as is the pitch wheel. This also gives you mod wheel since it's CC1. Once done, you now have the entire range of the control at your fingertips.
+
+If that's not what you want, this is where Macros come in. Instead of MIDI learning a control, arm a Macro with ALT+M (CMD+M on Mac) then press a number from 1 to 8. Now the adjustments you make with the arrow keys represents how much the macro can modulate that control. To disarm, repeat that same command again, but press either the same number as before or press 0. Now you can MIDI learn the macro value slider. By doing this, you constrain the amounts the controls are allowed to go when the macro modulates them. This is probably what you'll want to do more often than not. You can also bind more than one control to a single macro. An example of this would include raising the glide time in the global section, then making the same macro increase one tap's time while decreasing another's.
+
+Both MIDI learn and macro arming can be done via dedicated buttons. The MIDI learn button is part of the main grouping, while each macro is its own grouping, and you'll find an arm button in there. You'll know which, if any, macro is armed, because its button will read, "Disarm" instead. Only one macro can be armed at a time. Arming a second macro while a first is armed will disarm it.
 
 ### Keyboard shortcuts
 
@@ -65,54 +68,25 @@ Controls are arranged in five groups: Main, Tap *number*, Macros, Global, and Pe
 
 The tap keys work from any control and leave focus where it is, so you can stay on one control, such as Time, and step through the taps to set each one.
 
-Copy and paste act on the whole tap when focus is on the tap selector or the tap's on/off toggle, and on a single setting when focus is on that setting's slider. Whether a tap is on is never copied.
+Copy and paste act on the whole tap when focus is on the tap selector or the tap's on/off toggle, and on a single setting when focus is on that setting's slider. A tap can never be activated or deactivated as a result of a copy / paste operation.
 
 ### Pitch glitch modes
 
-The pitch glitch has two modes, chosen for each tap from the context menu on its Pitch probability control.
+The pitch glitch has two modes, chosen for each tap from the context menu on its Pitch probability control. Sweep will keep going, and when it hits either end of its range, it'll bounce back and head the other way. Varyspeed doesn't actually shift the pitch, it speeds that tap's audio up or down like adjusting the speed on a tape machine. It's better for frozen loops because it doesn't grind them down as fast and it doesn't jump around. It also ignores the speed control.
 
-- **Sweep** shifts the audio on every pass through the tap, so with feedback, and most of all while frozen, the pitch keeps moving for as long as the glitch lasts. Min speed and Max speed set how far each pass moves it. Minimum and Maximum are the limits: a sweep that reaches one turns back, and sweeps then tend to head for the middle of the range until the pitch is back there. Sweeps wear a frozen loop down over time; lower the probability or the speed, or narrow the range, to slow that.
-- **Varispeed** changes the tap's time instead, like changing a tape's speed. The pitch bends while the time glides to its new value, at the Glide time, and bends back when the glitch ends. Minimum and Maximum set the speed change; the speed controls aren't used.
+-
 
 ### Freeze sustain
 
 The **Freeze Sustain** toggle is beside Freeze in Global's Timing group and is off by default. Turn it on to keep frozen repeats audible when glitches wear them down. Each tap saves a protected copy of its loop and gradually blends some of it back as the processed audio loses level. Recovery can bring back the earlier sound of the loop.
 
-Capturing takes one trip around each tap. If you turn sustain on during a freeze, it saves what remains then; it cannot recover a loop that has already gone silent. Turning sustain off fades recovery out, and releasing freeze or disabling a tap discards its recording. The setting is saved with presets and projects and can be automated.
-
-### Macros
-
-A macro is one value that moves several controls at once. There are eight, each in its own group inside the Macros group, with an Arm button and a value slider. The value appears to your host as a parameter, so you can automate it or map it to a knob.
-
-To set up what a macro moves:
-
-1. Press its Arm button. The button now reads Disarm.
-2. Go to any control you want the macro to move and adjust it. While a macro is armed, a slider sets how far the macro moves that control, instead of changing the control itself. The amount is in the control's own units: 200 ms on a time makes it 200 ms longer, and -6 dB on a volume makes it 6 dB quieter. The slider keys all work as usual: Home and End go to the largest amounts up and down, Enter lets you type one, and Delete sets it to 0, which removes it.
-3. Set up as many controls as you like, on any tap, then press Disarm.
-
-A time has one amount, which applies whether or not host sync is on. While host sync is on, the time controls are note values and show that amount as a percentage of the range instead, such as 40%; the note value moves by that share of the list and always lands on a whole note value.
-
-You can also arm a macro without leaving the control you're on, anywhere outside the performance area. Press Alt+M (Cmd+M on macOS), wait for "Arm?", then press the macro's number, 1 to 8. Pressing the number of the macro that is already armed disarms it, and 0 disarms whichever one is armed. You have two seconds to press the number; any other key cancels.
-
-Arming a second macro disarms the first. Now moving the macro's value slider moves everything you set up: at a value of 1, each control has moved by the full amount you gave it, and at 0 not at all. The controls themselves keep the values you set; the macro's movement is added on top.
-
-Macros can move every slider except the ones in the Glitch engine group, Output gain, and the macros' own values.
-
-Each macro's group has a context menu, which opens from either of its controls:
-
-- **Rename** gives the macro a name of your own, which your host shows too.
-- **Modulations** lists every control the macro moves, with its amount. Each has **Edit**, to type a new amount, and **Clear**, to remove it. The item is missing when the macro moves nothing.
-- **Bipolar** makes the macro's value run from -1 to 1 instead of 0 to 1, so it can move its controls in both directions from where they sit.
-
-Macro names, modes and modulations are saved with your project and in presets, and changes to them can be undone.
-
 ### Output clipping
 
-The output is hard clipped at +18 dBFS, so that glitches piling up in a frozen loop can't get loud enough for the host to mute the track. To clip at 0 dBFS instead, or to turn clipping off, open the context menu on Output gain. The setting is saved with your project, but it can't be automated and loading a preset doesn't change it.
+The output is hard clipped at +18 dBFS, so that glitches piling up in a frozen loop can't get loud enough for the host to mute the track. To clip at 0 dBFS instead, or to turn clipping off, open the context menu on Output gain. The setting is saved with your project.
 
 ### Performance area
 
-The Performance group holds a single control, the performance area. While it has focus, the keys below replace the tap keys, copy and paste, Alt+F and Alt+M. They act on a selection of taps that starts as all of them and is separate from the selected tap.
+The performance area is designed for expressive live performance. While the performance area has focus, a different set of keybinds is in effect and taps can be selected for alteration. By default, all taps are selected, but you can select even numbered, odd numbered, or select no taps at all in which case you can manually toggle the ones you want, then the up and down arrow keys adjust their time. What follows is the keybinds for the performance area.
 
 | Action | Key |
 | --- | --- |
@@ -130,7 +104,7 @@ The Performance group holds a single control, the performance area. While it has
 | Stop the tape while held | T |
 | Switch the tape stop on or off | Shift+T |
 
-The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move. The arrows, the held freeze, the held glitch stop and the held tape stop are not announced.
+The arrows only move taps that are on, and move them by one note value while host sync is on. If any of them would pass its limit, none move.
 
 Stopping the glitches affects every tap, whatever the selection. New glitches don't start and running ones fade out quickly, but glitched audio already going round a feedback loop stays in it. Pressing G after switching the glitches off with Shift+G switches them back on when you let go. The glitch stop can't be automated and isn't saved with your project.
 
@@ -145,52 +119,19 @@ The **Tape stop** group in Global holds the same switch and two settings:
 - **Stop time** is how long the tape takes to slow from full speed to a stop, from 50 ms to 2 s.
 - **Start time** is how long it takes to get back up to full speed, from 50 ms to 2 s.
 
-What you play while the tape is slowing is still recorded, and comes back a little higher in pitch once the tape is at speed. The slower the tape, the less of it is recorded, and from half speed down nothing is, so those repeats return as a brief, quiet rise in pitch and not as a squeal. Audio already in the delay is unaffected. Everything in the delay holds where it stopped, including a frozen loop and any change you make to a tap, and carries on from there.
+What you play while the tape is slowing is still recorded, and comes back once the tape is at speed. The slower the tape, the less of it is recorded. Audio already in the delay is unaffected. Everything in the delay holds where it stopped, including a frozen loop and any change you make to a tap, and carries on from there.
 
 The switch and both times can be automated and MIDI learned. With a MIDI controller, the upper half of its range stops the tape and the lower half lets it go, which also releases a stop you switched on from the keyboard. The times are saved with presets and projects. The switch itself is never saved, so a project always opens with the tape running, and loading a preset leaves it as it is. Switching it can't be undone.
 
-### Help tags
-
-Every control has a help tag, a short description that screen readers read after its name. To turn them off, choose **Main menu → Accessibility settings...** and uncheck **Help tags**, then press Escape or activate Close. The change applies immediately. Tooltips still appear when hovering with the mouse. The choice defaults to on, is shared by instances in the same running host, and is saved in `Documents/Astralay/Settings.json` independently of projects and presets.
-
 ## Presets
 
-The **Preset name** field in Main holds the name Save uses. A new instance starts with a randomly chosen name, such as "hollow-lantern". Type over it to use your own, or activate **Randomize** for another random one. Escape puts back the name the field had when you moved to it. Typing or randomizing a name can't be undone and doesn't count as a change to the preset. When the sound has changed since the preset was loaded or saved, the field's name reads "Preset name, modified".
+The **Preset name** field in Main holds the name Save uses. A new instance starts with a randomly chosen name, such as "hollow-lantern". Type over it to use your own, or activate **Randomize** for another random one. Escape puts back the name the field had when you moved to it.
 
 **Save** writes the preset under that name, with no dialog. If a preset of that name already exists it is replaced without asking, and Astralay says "Replaced" rather than "Saved". To keep the original and save a variation, change the name first. Characters that file names can't hold are left out of the name, and an empty name is refused.
 
 **Load** opens a menu with a **Factory presets** submenu, a **User presets** submenu listing your presets alphabetically, and **Open presets folder**. The User presets submenu only appears once you have saved a preset. The preset the name field names is ticked. Loading a preset puts its name in the field, except for the factory preset Init, which gets a new random name.
 
 User presets are saved in `Documents/Astralay/Presets` on both Windows and macOS, and that folder is the only place they are loaded from; folders inside it are ignored. A preset's name is its file's name, so use Open presets folder to rename or delete presets, or to add ones you've been given.
-
-## MIDI
-
-Focus a sound control and press Alt+L on Windows or Cmd+L on macOS, then move a MIDI controller. Alternatively, activate **MIDI learn** in Main, click a sound control or press Enter on it, then move the controller. The selection click or Enter is consumed. A control's context menu also offers MIDI learn and, when bound, Remove MIDI mapping. Escape, the shortcut, or the learn button cancels learning. Learning disarms an armed macro and has no timeout while the editor stays open.
-
-Each binding remembers the exact channel and CC number, or channel and pitch bend. All CC numbers 0–127 are independent absolute values; relative encoders, CC pairs, RPN and NRPN aren't decoded. One source can drive several controls, but each control has one source. The event that completes learning changes no sound values. Later events move through the control's full slider range, including its curve and stepping. Pitch bend's centre is the exact midpoint. Switches use the lower half for Off and the upper half for On.
-
-**Main menu → MIDI → Smoothing** offers Off, Linear Fast, Linear Slow, Exponential Fast, and Exponential Slow. Fast eases movement over 20 ms; Slow uses 80 ms. Linear reaches its destination in that time; Exponential closes 99% of the gap, then settles exactly. Smoothing follows the latest controller position, easing jumps and jitter. Switches and stepped controls respond immediately, and existing DSP smoothing still applies afterward. Mouse or host automation edits cancel pending MIDI movement for that control; its next MIDI event resumes control. The choice defaults to Off, is shared by instances in the same running host, and is saved in `Documents/Astralay/Settings.json` independently of projects, presets, and mappings.
-
-Tap bindings stay on the captured tap, and macro bindings stay on their slot. Time, stutter slice limits and buffer size follow host sync between milliseconds and note values. Pitch Mode, clipping, navigation, macro arms, modulation amounts and the performance pad cannot be learned. MIDI writes the stored sound value, and existing macro modulation applies afterward. Learning a macro value lets its existing routes and amounts shape travel for parameters supported by macros.
-
-**Main menu → MIDI** holds Save, Save As, default and clear operations, followed by valid mapping files sorted by name. Files live in `Documents/Astralay/MIDI Mappings`. Names are typed into an accessible field and must be portable between Windows and macOS. Saving uses `.json` and confirms replacement of another file or an externally changed file. Loading a mapping with unsaved edits offers Save, Discard or Cancel. Clear mapping asks once and discards the current bindings; it leaves files and the default unchanged.
-
-Mapping edits are undoable independently of sound edits. Incoming MIDI movement does not enter Astralay's undo history. Projects embed their complete mapping, file association and unsaved status; reopening or duplicating an instance doesn't depend on the mapping file. Loading a sound preset leaves bindings alone. Mapping files contain no sound values or macro configuration. Empty mappings cannot be saved as files.
-
-Set current mapping as default saves a nonempty mapping first when necessary, then references its file for new instances. Making an empty mapping the default, or clearing the default, makes new instances start empty. Existing instances keep their mappings. Restored projects, including projects predating MIDI support, take precedence over defaults. A missing or invalid default starts empty and exposes a status in the MIDI menu.
-
-### Audio and MIDI routing
-
-Astralay remains an audio effect with stereo output and stereo or mono input. Hosted builds receive MIDI from the DAW; the standalone's audio/MIDI settings select MIDI input devices. Astralay leaves incoming MIDI messages and their sample offsets unchanged in its processing buffer, including the learn event. Actual MIDI input/output routing and automation recording depend on the host and format; VST3 represents controller input through its MIDI-controller parameter interface, and hosts may filter or consume messages before delivery. AU is configured as a MIDI-capable music effect. Astralay generates no MIDI.
-
-In Reaper, use either of these arrangements:
-
-1. Put Astralay on a track receiving MIDI, enable the track's MIDI input/monitoring, and also feed audio to that track's first channel pair (for example from another track).
-2. Put Astralay on an audio track and send MIDI from another track, enabling MIDI in the send while disabling that send's audio if it isn't needed.
-
-Keep the effect's audio pins on the first stereo pair; mono input is also supported. MIDI output must be routed onward by the host if needed. Enable the host's appropriate automation recording mode to record parameter notifications. MIDI and host automation write the same stored values; the last applied update wins.
-
-These routing instructions require manual verification. Automated Windows processor/editor tests and build results are recorded in [MIDI verification](MIDI_verification.md); no Reaper, other-host, screen-reader or macOS/AU verification is implied by those tests.
 
 ## Building
 
@@ -259,6 +200,22 @@ The installer lets you choose which formats to install and puts them where every
 The installer isn't signed with a Developer ID or notarised, so macOS refuses to open a downloaded copy. Either run `xattr -c Astralay-<version>-macOS.pkg` first, or try to open it and then choose "Open Anyway" under Privacy & Security in System Settings. The plugins it installs need nothing further.
 
 To uninstall, delete `Astralay.vst3`, `Astralay.component` and `Astralay.clap` from the folders under `/Library/Audio/Plug-Ins`, and `Astralay.app` from `/Applications`.
+
+### Windows installer
+
+After a build, `installer\windows\build-installer.ps1` packages the VST3, the CLAP and the standalone into `build\installer\Astralay-<version>-Windows.exe`. It takes the build folder and configuration as optional `-BuildDir` and `-Config` arguments (`build` and `Release` by default), and needs [Inno Setup](https://jrsoftware.org/isinfo.php) 6.3 or later.
+
+The installer lets you choose which formats to install and puts them where every user of the PC can reach them, so it asks for administrator rights: the VST3 goes in `C:\Program Files\Common Files\VST3`, the CLAP in `C:\Program Files\Common Files\CLAP`, and the standalone in `C:\Program Files\Astralay` with a Start menu shortcut. It replaces any copy already there.
+
+The installer isn't code signed, so Windows SmartScreen warns about a downloaded copy. Choose "More info", then "Run anyway".
+
+To uninstall, use "Installed apps" in Windows Settings.
+
+### Releases
+
+Pushing a tag that starts with `v` runs the workflow in `.github/workflows/release.yml`. It builds on macOS and Windows, then publishes a GitHub release for the tag with three files: the macOS installer, the Windows installer, and `Astralay-<version>-plugins.zip`, which holds the VST3 for both systems and the AU, for installing by hand. The tag has to match the version in `CMakeLists.txt` (`v0.1.0` for version 0.1.0), or the workflow stops before building.
+
+The workflow can also be run by hand from the Actions tab. It then builds the same three files and keeps them as a workflow artifact, without touching any release.
 
 ## Testing
 

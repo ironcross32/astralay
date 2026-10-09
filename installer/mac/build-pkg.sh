@@ -114,26 +114,8 @@ for component in "${components[@]}"; do
         "$work/packages/Astralay-$name.pkg"
 done
 
-# The licences have to accompany binary releases, so the installer shows them all.
-{
-    echo "Astralay $version"
-    echo
-    echo "Builds of Astralay are distributed under the GNU Affero General Public License version 3,"
-    echo "which is reproduced in full at the end of this text. The source code is available from"
-    echo "https://github.com/ironcross32/astralay."
-    echo
-    echo "================================================================================"
-    echo
-    cat "$repo/LICENSE"
-    echo
-    echo "================================================================================"
-    echo
-    cat "$repo/THIRD_PARTY_NOTICES.md"
-    echo
-    echo "================================================================================"
-    echo
-    cat "$repo/LICENSE-AGPL-3.0.txt"
-} > "$work/resources/License.txt"
+# Display the full licence for distributed builds. Other notices are bundled separately.
+cp "$repo/LICENSE-AGPL-3.0.txt" "$work/resources/License.txt"
 
 sed -e "s/@VERSION@/$version/g" -e "s/@MIN_OS@/$min_os/g" -e "s/@IDENTIFIER@/$identifier/g" \
     "$here/distribution.xml.in" > "$work/distribution.xml"

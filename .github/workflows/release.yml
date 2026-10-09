@@ -1,0 +1,157 @@
+name: Release
+
+# Builds the macOS and Windows installers, and a ZIP of the plugins for installing by hand, then
+# publishes all three as the tag's GitHub release. Run by hand from the Actions tab, it builds
+# the same three files and keeps them as a workflow artifact instead, without touching any release.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The installers take their version from the build, so a tag that disagrees with CMakeLists.txt
+  # would publish a mislabelled release. Catch it before the builds rather than after.
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read the project version
+        id: read
+        run: |
+          version="$(sed -n 's/^project(Astralay VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+          if [ -z "$version" ]; then
+            echo "::error::Can't read the version from CMakeLists.txt"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in CMakeLists.txt"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Build the installer
+        run: installer/mac/build-pkg.sh
+
+      # Workflow artifacts drop file permissions, which would break the bundles and their
+      # signatures, so the plugins for the ZIP travel to the release job inside a ZIP of their own.
+      - name: Gather the installer and the plugins for the ZIP
+        run: |
+          mkdir -p build/release build/plugins/macOS
+          cp build/installer/*.pkg build/release/
+          ditto build/Astralay_artefacts/Release/VST3/Astralay.vst3 build/plugins/macOS/Astralay.vst3
+          ditto build/Astralay_artefacts/Release/AU/Astralay.component build/plugins/macOS/Astralay.component
+          (cd build/plugins && zip -r -y -q ../release/macos-plugins.zip macOS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: build/release/
+          if-no-files-found: error
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Configure
+        run: cmake -S . -B build
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Install Inno Setup if the runner doesn't have it
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --yes --no-progress
+          }
+
+      - name: Build the installer
+        run: installer\windows\build-installer.ps1
+
+      - name: Gather the installer and the plugin for the ZIP
+        run: |
+          New-Item -ItemType Directory -Force build\release\Windows | Out-Null
+          Copy-Item build\installer\*.exe build\release
+          Copy-Item -Recurse build\Astralay_artefacts\Release\VST3\Astralay.vst3 build\release\Windows
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: build/release/
+          if-no-files-found: error
+
+  release:
+    needs: [version, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # For the licences and the installation notes that go in the ZIP.
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble the ZIP and the release files
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p zip release
+          unzip -q artifacts/macos/macos-plugins.zip -d zip
+          cp -R artifacts/windows/Windows zip/
+          cp LICENSE zip/LICENSE.txt
+          cp LICENSE-AGPL-3.0.txt THIRD_PARTY_NOTICES.md zip/
+          cp installer/manual-install.txt "zip/How to install.txt"
+          (cd zip && zip -r -y -q "../release/Astralay-$VERSION-plugins.zip" .)
+          cp artifacts/macos/*.pkg artifacts/windows/*.exe release/
+          ls -l release
+
+      - name: Keep the files as a workflow artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Astralay-${{ needs.version.outputs.version }}
+          path: release/
+          if-no-files-found: error
+
+      # Create the release unless a rerun finds it already there, then upload.
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "Astralay ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag \
+            || gh release view "$GITHUB_REF_NAME" > /dev/null
+          gh release upload "$GITHUB_REF_NAME" release/* --clobber

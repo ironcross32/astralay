@@ -213,9 +213,15 @@ To uninstall, use "Installed apps" in Windows Settings.
 
 ### Releases
 
-Pushing a tag that starts with `v` runs the workflow in `.github/workflows/release.yml`. It builds on macOS and Windows, then publishes a GitHub release for the tag with three files: the macOS installer, the Windows installer, and `Astralay-<version>-plugins.zip`, which holds the VST3 for both systems and the AU, for installing by hand. The tag has to match the version in `CMakeLists.txt` (`v0.1.0` for version 0.1.0), or the workflow stops before building.
+`scripts/release.ps1` cuts a release. It asks for the new version, offering the current one with its last number raised by one, writes it into `CMakeLists.txt`, commits that file alone, tags the commit `v<version>`, and pushes the branch and then the tag. It stops before changing anything if the tag already exists. To run it as `git release`, add the alias once in each clone:
 
-The workflow can also be run by hand from the Actions tab. It then builds the same three files and keeps them as a workflow artifact, without touching any release.
+```
+git config alias.release '!powershell -NoProfile -ExecutionPolicy Bypass -File "$(git rev-parse --show-toplevel)/scripts/release.ps1"'
+```
+
+Pushing a tag that starts with `v` runs the workflow in `.github/workflows/release.yml`. It builds on macOS and Windows, then publishes a GitHub release for the tag with five files: the macOS installer, the Windows installer, and a ZIP of each plugin format for installing by hand, `Astralay-<version>-VST3.zip`, `Astralay-<version>-CLAP.zip` and `Astralay-<version>-AU.zip`. The VST3 and CLAP ZIPs hold the plugin for both systems. The tag has to match the version in `CMakeLists.txt` (`v0.1.0` for version 0.1.0), or the workflow stops before building.
+
+The workflow can also be run by hand from the Actions tab. It then builds the same five files and keeps each as its own workflow artifact, without touching any release.
 
 ## Testing
 

@@ -1,32 +1,37 @@
 Astralay: installing by hand
 
-This ZIP holds the VST3 plugin for Windows and macOS and the Audio Unit for macOS, for anyone who
-would rather not run an installer. The installers on the same release page also offer the CLAP
-plugin and the standalone application.
+This ZIP holds Astralay in one plugin format, for anyone who would rather not run an installer.
+The same release page has a ZIP for each of the VST3, the CLAP and the Audio Unit. The VST3 and
+the CLAP come for Windows and macOS, in a folder for each; the Audio Unit is for macOS only. The
+installers on that page also offer the standalone application.
 
 Windows
 
-Copy the Astralay.vst3 folder from the Windows folder to:
+Copy from the Windows folder, whichever of these this ZIP holds:
 
-    C:\Program Files\Common Files\VST3
+    Astralay.vst3  to  C:\Program Files\Common Files\VST3
+    Astralay.clap  to  C:\Program Files\Common Files\CLAP
 
-Copy the whole folder, not just the file inside it. Replace any copy already there.
+Astralay.vst3 is a folder: copy the whole folder, not just the file inside it. Create the
+destination folder if it doesn't exist, and replace any copy already there.
 
 macOS
 
-Copy from the macOS folder:
+Copy from the macOS folder, whichever of these this ZIP holds:
 
     Astralay.vst3       to  /Library/Audio/Plug-Ins/VST3
+    Astralay.clap       to  /Library/Audio/Plug-Ins/CLAP
     Astralay.component  to  /Library/Audio/Plug-Ins/Components
 
 To install for yourself only, use the same folders under Library in your home folder instead.
 Create the folders if they don't exist, and replace any copy already there.
 
 The plugins aren't signed with a Developer ID or notarised, so macOS blocks copies that came from
-a download until their quarantine flag is cleared. After copying, run this in Terminal for each
-one, with its own path:
+a download until their quarantine flag is cleared. After copying, run the matching line in
+Terminal, with the path you copied to:
 
     xattr -cr /Library/Audio/Plug-Ins/VST3/Astralay.vst3
+    xattr -cr /Library/Audio/Plug-Ins/CLAP/Astralay.clap
     xattr -cr /Library/Audio/Plug-Ins/Components/Astralay.component
 
 If a host doesn't show the Audio Unit straight away, log out and back in, or restart the Mac.

@@ -1,8 +1,8 @@
 name: Release
 
-# Builds the macOS and Windows installers, and a ZIP of the plugins for installing by hand, then
-# publishes all three as the tag's GitHub release. Run by hand from the Actions tab, it builds
-# the same three files and keeps them as a workflow artifact instead, without touching any release.
+# Builds the macOS and Windows installers, and a ZIP of each plugin format for installing by hand,
+# then publishes all five as the tag's GitHub release. Run by hand from the Actions tab, it builds
+# the same five files and keeps each as a workflow artifact instead, without touching any release.
 on:
   push:
     tags:
@@ -59,19 +59,21 @@ jobs:
         run: installer/mac/build-pkg.sh
 
       # Workflow artifacts drop file permissions, which would break the bundles and their
-      # signatures, so the plugins for the ZIP travel to the release job inside a ZIP of their own.
-      - name: Gather the installer and the plugins for the ZIP
+      # signatures, so the plugins travel to the release job inside a ZIP of their own.
+      - name: Gather the installer and the plugins
         run: |
-          mkdir -p build/release build/plugins/macOS
-          cp build/installer/*.pkg build/release/
-          ditto build/Astralay_artefacts/Release/VST3/Astralay.vst3 build/plugins/macOS/Astralay.vst3
-          ditto build/Astralay_artefacts/Release/AU/Astralay.component build/plugins/macOS/Astralay.component
-          (cd build/plugins && zip -r -y -q ../release/macos-plugins.zip macOS)
+          artefacts=build/Astralay_artefacts/Release
+          mkdir -p build/dist build/plugins/VST3/macOS build/plugins/CLAP/macOS build/plugins/AU/macOS
+          cp build/installer/*.pkg build/dist/
+          ditto "$artefacts/VST3/Astralay.vst3" build/plugins/VST3/macOS/Astralay.vst3
+          ditto "$artefacts/CLAP/Astralay.clap" build/plugins/CLAP/macOS/Astralay.clap
+          ditto "$artefacts/AU/Astralay.component" build/plugins/AU/macOS/Astralay.component
+          (cd build/plugins && zip -r -y -q ../dist/macos-plugins.zip .)
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos
-          path: build/release/
+          name: build-macos
+          path: build/dist/
           if-no-files-found: error
 
   windows:
@@ -98,16 +100,20 @@ jobs:
       - name: Build the installer
         run: installer\windows\build-installer.ps1
 
-      - name: Gather the installer and the plugin for the ZIP
+      # Not build\release: Windows ignores case, so that's the build's own Release folder, which
+      # holds its libraries.
+      - name: Gather the installer and the plugins
         run: |
-          New-Item -ItemType Directory -Force build\release\Windows | Out-Null
-          Copy-Item build\installer\*.exe build\release
-          Copy-Item -Recurse build\Astralay_artefacts\Release\VST3\Astralay.vst3 build\release\Windows
+          $artefacts = "build\Astralay_artefacts\Release"
+          New-Item -ItemType Directory -Force build\dist\plugins\VST3\Windows, build\dist\plugins\CLAP\Windows | Out-Null
+          Copy-Item build\installer\*.exe build\dist
+          Copy-Item -Recurse $artefacts\VST3\Astralay.vst3 build\dist\plugins\VST3\Windows
+          Copy-Item $artefacts\CLAP\Astralay.clap build\dist\plugins\CLAP\Windows
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
-          path: build/release/
+          name: build-windows
+          path: build/dist/
           if-no-files-found: error
 
   release:
@@ -115,35 +121,84 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # To delete the build jobs' artifacts.
+      actions: write
 
     steps:
-      # For the licences and the installation notes that go in the ZIP.
+      # For the licences and the installation notes that go in the ZIPs.
       - uses: actions/checkout@v5
 
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Assemble the ZIP and the release files
+      - name: Assemble the ZIPs and the release files
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           mkdir -p zip release
-          unzip -q artifacts/macos/macos-plugins.zip -d zip
-          cp -R artifacts/windows/Windows zip/
-          cp LICENSE zip/LICENSE.txt
-          cp LICENSE-AGPL-3.0.txt THIRD_PARTY_NOTICES.md zip/
-          cp installer/manual-install.txt "zip/How to install.txt"
-          (cd zip && zip -r -y -q "../release/Astralay-$VERSION-plugins.zip" .)
-          cp artifacts/macos/*.pkg artifacts/windows/*.exe release/
+          unzip -q artifacts/build-macos/macos-plugins.zip -d zip
+          cp -R artifacts/build-windows/plugins/. zip/
+          for format in VST3 CLAP AU; do
+            cp LICENSE "zip/$format/LICENSE.txt"
+            cp LICENSE-AGPL-3.0.txt THIRD_PARTY_NOTICES.md "zip/$format/"
+            cp installer/manual-install.txt "zip/$format/How to install.txt"
+            (cd "zip/$format" && zip -r -y -q "../../release/Astralay-$VERSION-$format.zip" .)
+          done
+          cp artifacts/build-macos/*.pkg artifacts/build-windows/*.exe release/
           ls -l release
 
-      - name: Keep the files as a workflow artifact
+      # The build jobs' artifacts were only for getting the files here. Without this, a run by
+      # hand would list them alongside the five files below.
+      - name: Remove the build jobs' artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifacts="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts"
+          for id in $(gh api "$artifacts" --jq '.artifacts[] | select(.name | startswith("build-")) | .id'); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id"
+          done
+
+      # One artifact per file, uploaded as it is rather than wrapped in a ZIP. Each takes its
+      # file's name.
+      - name: Keep the Windows installer as a workflow artifact
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: Astralay-${{ needs.version.outputs.version }}
-          path: release/
+          path: release/Astralay-${{ needs.version.outputs.version }}-Windows.exe
+          archive: false
+          if-no-files-found: error
+
+      - name: Keep the macOS installer as a workflow artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: release/Astralay-${{ needs.version.outputs.version }}-macOS.pkg
+          archive: false
+          if-no-files-found: error
+
+      - name: Keep the VST3 as a workflow artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: release/Astralay-${{ needs.version.outputs.version }}-VST3.zip
+          archive: false
+          if-no-files-found: error
+
+      - name: Keep the CLAP as a workflow artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: release/Astralay-${{ needs.version.outputs.version }}-CLAP.zip
+          archive: false
+          if-no-files-found: error
+
+      - name: Keep the AU as a workflow artifact
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          path: release/Astralay-${{ needs.version.outputs.version }}-AU.zip
+          archive: false
           if-no-files-found: error
 
       # Create the release unless a rerun finds it already there, then upload.

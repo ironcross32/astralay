@@ -20,6 +20,12 @@ Astralay is a screen-reader-first multi-tap delay and glitch generator. It comes
 - Eight macros, each moving any number of controls at once from a single value you can automate or control via MIDI.
 - MIDI CC and pitch-bend learn, with reusable mappings and project-state recall.
 
+## Downloading
+
+These links always download the latest installer for your platform of choice. For other options, please visit the [releases](https://github.com/ironcross32/astralay/releases/latest) page.
+- [Windows](https://github.com/ironcross32/astralay/releases/latest/download/Astralay-0.1.1-Windows.exe)
+- [Mac](https://github.com/ironcross32/astralay/releases/latest/download/Astralay-0.1.1-macOS.pkg)
+
 ## Usage
 
 The most basic setup is to place Astralay on an armed track that accepts audio input or a track with audio already on it. Once done, you can adjust the taps to taste, bring in glitches, freeze the audio, crank up the wet, bring in a bit more smear or whatever suits your fancy.

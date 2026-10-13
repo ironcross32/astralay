@@ -5,7 +5,7 @@ Astralay is a screen-reader-first multi-tap delay and glitch generator. It comes
 ## Features
 
 - Up to 16 delay taps, each with their own time, volume, pan, feedback, and filters in the feedback path.
-- Nine glitch types per tap, each firing at random with their own probability and each setting is randomized from ranges you set:
+- Nine glitch types per tap, each firing at random with its own probability, and each of its settings randomized from ranges you set:
     - reverse
     - stutter
     - granularize
@@ -30,11 +30,11 @@ These links always download the latest installer for your platform of choice. Fo
 
 The most basic setup is to place Astralay on an armed track that accepts audio input or a track with audio already on it. Once done, you can adjust the taps to taste, bring in glitches, freeze the audio, crank up the wet, bring in a bit more smear or whatever suits your fancy.
 
-There are two ways to set things up if you want MIDI as well. You can either send MIDI from another track to Astralay, or you can put Astralay on a MIDI track and send audio to the first stereo pair, it's your choice. Press ALT+L (CMD+L on Mac) while focused on a control to begin the MIDI learn process, then move a fader or encoder on your controller/ All MIDI CCs are included, as is the pitch wheel. This also gives you mod wheel since it's CC1. Once done, you now have the entire range of the control at your fingertips.
+There are two ways to set things up if you want MIDI as well. You can either send MIDI from another track to Astralay, or you can put Astralay on a MIDI track and send audio to the first stereo pair, it's your choice. Press ALT+L (CMD+L on Mac) while focused on a control to begin the MIDI learn process, then move a fader or encoder on your controller. All MIDI CCs are included, as is the pitch wheel. This also gives you mod wheel since it's CC1. Once done, you now have the entire range of the control at your fingertips.
 
-If that's not what you want, this is where Macros come in. Instead of MIDI learning a control, arm a Macro with ALT+M (CMD+M on Mac) then press a number from 1 to 8. Now the adjustments you make with the arrow keys represents how much the macro can modulate that control. To disarm, repeat that same command again, but press either the same number as before or press 0. Now you can MIDI learn the macro value slider. By doing this, you constrain the amounts the controls are allowed to go when the macro modulates them. This is probably what you'll want to do more often than not. You can also bind more than one control to a single macro. An example of this would include raising the glide time in the global section, then making the same macro increase one tap's time while decreasing another's.
+If that's not what you want, this is where Macros come in. Instead of MIDI learning a control, arm a Macro with ALT+M (CMD+M on Mac) then press a number from 1 to 8. Now the adjustments you make with the arrow keys represent how much the macro can modulate that control. To disarm, repeat that same command again, but press either the same number as before or press 0. Now you can MIDI learn the macro value slider. By doing this, you constrain how far the controls are allowed to go when the macro modulates them. This is probably what you'll want to do more often than not. You can also bind more than one control to a single macro. An example of this would include raising the glide time in the global section, then making the same macro increase one tap's time while decreasing another's.
 
-Both MIDI learn and macro arming can be done via dedicated buttons. The MIDI learn button is part of the main grouping, while each macro is its own grouping, and you'll find an arm button in there. You'll know which, if any, macro is armed, because its button will read, "Disarm" instead. Only one macro can be armed at a time. Arming a second macro while a first is armed will disarm it.
+Both MIDI learn and macro arming can be done via dedicated buttons. The MIDI learn button is part of the main grouping, while each macro is its own grouping, and you'll find an arm button in there. You'll know which, if any, macro is armed, because its button will read, "Disarm" instead. Only one macro can be armed at a time. Arming a second macro while a first is armed will disarm the first.
 
 ### Keyboard shortcuts
 
@@ -78,9 +78,7 @@ Copy and paste act on the whole tap when focus is on the tap selector or the tap
 
 ### Pitch glitch modes
 
-The pitch glitch has two modes, chosen for each tap from the context menu on its Pitch probability control. Sweep will keep going, and when it hits either end of its range, it'll bounce back and head the other way. Varyspeed doesn't actually shift the pitch, it speeds that tap's audio up or down like adjusting the speed on a tape machine. It's better for frozen loops because it doesn't grind them down as fast and it doesn't jump around. It also ignores the speed control.
-
--
+The pitch glitch has two modes, chosen for each tap from the context menu on its Pitch probability control. Sweep will keep going, and when it hits either end of its range, it'll bounce back and head the other way. Varispeed doesn't actually shift the pitch, it speeds that tap's audio up or down like adjusting the speed on a tape machine. It's better for frozen loops because it doesn't grind them down as fast and it doesn't jump around. It also ignores the speed control.
 
 ### Freeze sustain
 
@@ -92,7 +90,7 @@ The output is hard clipped at +18 dBFS, so that glitches piling up in a frozen l
 
 ### Performance area
 
-The performance area is designed for expressive live performance. While the performance area has focus, a different set of keybinds is in effect and taps can be selected for alteration. By default, all taps are selected, but you can select even numbered, odd numbered, or select no taps at all in which case you can manually toggle the ones you want, then the up and down arrow keys adjust their time. What follows is the keybinds for the performance area.
+The performance area is for playing live. While the performance area has focus, a different set of keybinds is in effect and taps can be selected for alteration. By default, all taps are selected, but you can select the even numbered or odd numbered taps, or select none at all and manually toggle the ones you want. The up and down arrow keys then adjust the selected taps' time. These are the keybinds for the performance area.
 
 | Action | Key |
 | --- | --- |

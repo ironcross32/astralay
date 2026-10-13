@@ -177,7 +177,8 @@ namespace
         };
 
         auto timing = makeGroup ("timing", "Timing");
-        timing->addChild (makeBool (sync, "Host Sync", false),
+        // Qualified: `sync` clashes with POSIX ::sync() from <unistd.h> on Linux.
+        timing->addChild (makeBool (global::sync, "Host Sync", false),
                           f (glide, "Glide Time", skewed (0.0f, 2000.0f, 300.0f), 100.0f),
                           makeBool (freeze, "Freeze", false));
 

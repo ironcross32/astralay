@@ -352,7 +352,9 @@ void AstralayEditor::buildGlobalGroup()
     for (auto* group : { &timingGroup, &engineGroup, &outputGroup, &tapeStopGroup })
         globalGroup.addInOrder (*group);
 
-    addToggle (timingGroup, timingItems, syncToggle, sync);
+    // `sync` qualified: on Linux the parameter name clashes with POSIX ::sync() from <unistd.h>,
+    // which the using-directive above would otherwise find unqualified.
+    addToggle (timingGroup, timingItems, syncToggle, params::global::sync);
     addSliderRow (timingGroup, timingItems, "Glide time", glide, nullptr, false);
     addToggle (timingGroup, timingItems, freezeToggle, freeze);
     addToggle (timingGroup, timingItems, sustainToggle, freezeSustain);

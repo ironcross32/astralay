@@ -146,6 +146,11 @@ User presets are saved in `Documents/Astralay/Presets` on both Windows and macOS
 - CMake 3.22 or later.
 - Windows: Visual Studio 2022 or its Build Tools, with the C++ workload.
 - macOS: Xcode.
+- Linux: GCC 12 or later (or Clang), plus JUCE's X11 and ALSA dependencies. On Debian and Ubuntu:
+
+```
+sudo apt install cmake git libasound2-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev libegl-dev libfreetype-dev libfontconfig1-dev
+```
 
 ### Getting the source
 
@@ -188,12 +193,22 @@ macOS builds are universal binaries (Apple Silicon and Intel) and need macOS 12 
 
 Every bundle is ad-hoc signed as the last step of the build, which Apple Silicon needs before it will load the plugins or run the standalone. No `xattr` or `chmod` is needed for local builds. Ad-hoc signing isn't enough for builds you distribute: those need signing with a Developer ID and notarising.
 
+### Linux
+
+```
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+```
+
+The AU is built only on macOS, so on Linux the formats are VST3, CLAP and Standalone. MIDI input and output go through ALSA, and the screen-reader announcements that are custom code on Windows fall back to JUCE's generic announcement path like everywhere else.
+
 ### Output
 
 The built plugins are in `build/Astralay_artefacts/Release/`, in the `VST3`, `CLAP`, `AU` and `Standalone` folders. To use them, copy them to the usual plugin folders:
 
 - Windows: VST3 to `C:\Program Files\Common Files\VST3`, CLAP to `C:\Program Files\Common Files\CLAP`.
 - macOS: VST3 to `~/Library/Audio/Plug-Ins/VST3`, CLAP to `~/Library/Audio/Plug-Ins/CLAP`, AU to `~/Library/Audio/Plug-Ins/Components`. Create the folders if they don't exist, and copy with `ditto` (for example `ditto build/Astralay_artefacts/Release/VST3/Astralay.vst3 ~/Library/Audio/Plug-Ins/VST3/Astralay.vst3`) so the signature is kept.
+- Linux: VST3 to `~/.vst3`, CLAP to `~/.clap`. The VST3 is a folder; copy the whole `Astralay.vst3` directory (`cp -r build/Astralay_artefacts/Release/VST3/Astralay.vst3 ~/.vst3/`), and create the folders if they don't exist.
 
 To check the AU on macOS, run `auval -v aufx Alay Ilbs`. If a host doesn't show Astralay after you replace a broken copy, clear its plugin cache and re-scan. In Reaper, that's Preferences, Plug-ins, VST, "Clear cache/re-scan".
 
@@ -238,6 +253,8 @@ build/AstralayTests_artefacts/Release/AstralayTests
 ```
 
 It exits with a non-zero status if any check fails. Run it with `--benchmark` to measure processing cost and tap-switching speed.
+
+The editor tests create real components, so on Linux the test program needs an X display. Run it directly inside a desktop session, or headless with `scripts/linux/run-tests.sh`, which holds the window-manager atoms that JUCE expects into existence and runs the program inside Xvfb.
 
 Every release must also pass [pluginval](https://github.com/Tracktion/pluginval) at strictness level 10:
 
